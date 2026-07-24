@@ -105,7 +105,7 @@ Mindraft 作为旁观者，以局外人的眼光重新审视这些文字，
 │         ↓                                                │
 │   process_notes.py →  读取 raw_notes                     │
 │         ↓                                                │
-│   llm_factory.py   →  调用 DeepSeek / OpenAI / Claude   │
+│   llm_factory.py   →  调用 Kimi / OpenAI / Claude       │
 │         ↓                                                │
 │   ① 写入 ai_notes（分类 + 链接 + 追问标记）               │
 │   ② 更新 memory.json（蒸馏记忆）                         │
@@ -195,7 +195,7 @@ mindraft/
 ├── scripts/
 │   ├── llm/                      # LLM 抽象层
 │   │   ├── base.py
-│   │   ├── deepseek.py
+│   │   ├── kimi.py
 │   │   ├── openai.py
 │   │   └── anthropic.py
 │   ├── llm_factory.py
@@ -239,7 +239,7 @@ mindraft/
 | 笔记编写 | Obsidian | 现有工具不变 |
 | 版本存储 | GitHub | 历史追溯，免费 |
 | 处理脚本 | Python 3.11+ | vibe coding 友好，库丰富 |
-| LLM（默认） | DeepSeek API | 中文能力强，价格低，OpenAI 兼容接口 |
+| LLM（默认） | Kimi API | 长上下文和中文能力强，OpenAI 兼容接口 |
 | LLM（备选） | OpenAI / Anthropic | 通过 config.yml 一键切换 |
 | 前端 | 原生 HTML + CSS + JS | 零框架，直接上手 |
 | 图表库 | Chart.js（CDN 引入） | 无需安装，一行引入 |
@@ -253,7 +253,7 @@ mindraft/
 | 配置项 | 说明 | 示例值 |
 |--------|------|--------|
 | `notes_vault_path` | 笔记仓库本地路径 | `~/Documents/notes-vault` |
-| `llm_provider` | 切换 LLM 的唯一入口 | `deepseek \| openai \| anthropic` |
+| `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic` |
 | `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_art \| game` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |
 | `token_estimation` | Token 估算方式 | `char_ratio \| tiktoken` |
@@ -274,7 +274,7 @@ mindraft/
 ```
 scripts/llm/
 ├── base.py          # 抽象基类，定义统一接口
-├── deepseek.py      # DeepSeek 实现（OpenAI 兼容接口）
+├── kimi.py          # Kimi 实现（OpenAI 兼容接口）
 ├── openai.py        # OpenAI 实现
 └── anthropic.py     # Claude 实现
 ```
@@ -686,7 +686,7 @@ Transformation（稀有，标志性人生转变）
     "version": 4,
     "established_at": "2026-06-01",
     "last_evolved_at": "2026-06-15",
-    "base_image_seed": "deepseek_seed_20260601_7a3f",  // 像素画可复现基础形象
+    "base_image_seed": "kimi_seed_20260601_7a3f",      // 像素画可复现基础形象
     "core_traits": ["注重细节", "内向", "逻辑导向"],    // 稳定人格特质
     "visual_anchors": ["眼镜", "深色系穿搭", "短发"],   // 外貌稳定元素
     "style_era": {
@@ -981,7 +981,7 @@ run.py 执行
 **实现内容**
 - 目录结构初始化（notes-vault + mindraft 双 repo 结构）
 - `config.yml` 配置文件
-- LLM 抽象层（`base.py` + `deepseek.py` + `llm_factory.py`）
+- LLM 抽象层（`base.py` + `kimi.py` + `llm_factory.py`）
 - `run.py` CLI 骨架（能解析参数，能读取 config）
 - 基础设施：
   - `utils.py`：原子写入 `safe_write_json()`、进程锁 `get_process_lock()`、Token 估算 `token_estimate()`、日志初始化 `setup_logging()`
@@ -989,7 +989,7 @@ run.py 执行
   - `prompts.py`：所有 Base Role 定义
 
 **依赖包**
-- `openai`（DeepSeek 的 OpenAI 兼容接口）
+- `openai`（Kimi 的 OpenAI 兼容接口）
 - `pyyaml`（读取 config.yml）
 - `jsonschema`（LLM 返回校验）
 - `filelock`（进程级文件锁）

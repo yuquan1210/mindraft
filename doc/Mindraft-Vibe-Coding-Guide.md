@@ -132,7 +132,7 @@ mindraft/
 按 Phase 0 的目标实现以下内容：
 1. 创建完整的目录结构
 2. config.yml（使用 docs 中定义的格式）
-3. scripts/llm/base.py + deepseek.py + llm_factory.py
+3. scripts/llm/base.py + kimi.py + llm_factory.py
 4. scripts/utils.py（safe_write_json, get_process_lock, token_estimate, setup_logging）
 5. scripts/schemas.py（PROCESS_NOTE_SCHEMA）
 6. scripts/prompts.py（所有 Base Role 定义）
@@ -281,7 +281,7 @@ Agent 一次做太多，质量会下降，错误会累积。
 
 ```
 不要：在 config.yml 中写真实 API key
-要：  使用环境变量 ${DEEPSEEK_API_KEY}，在 .env 文件中配置
+要：  使用环境变量 ${KIMI_API_KEY}，在 .env 文件中配置
 
 提醒 Agent：
   "config.yml 中的 API key 使用环境变量占位符，

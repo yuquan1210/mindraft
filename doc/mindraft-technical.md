@@ -28,12 +28,12 @@
 notes_vault_path: ~/Documents/notes-vault
 
 # LLM 配置（改 llm_provider 这一行切换模型）
-llm_provider: deepseek       # deepseek | openai | anthropic
-llm_model: deepseek-chat
+llm_provider: kimi           # kimi | openai | anthropic
+llm_model: moonshot-v1-32k
 
 # API Keys（建议用环境变量，此处为占位）
 api_keys:
-  deepseek:  ${DEEPSEEK_API_KEY}
+  kimi:      ${KIMI_API_KEY}
   openai:    ${OPENAI_API_KEY}
   anthropic: ${ANTHROPIC_API_KEY}
   replicate: ${REPLICATE_API_KEY}
@@ -112,20 +112,20 @@ class BaseLLM(ABC):
         return json.loads(cleaned)
 ```
 
-### llm/deepseek.py
+### llm/kimi.py
 
 ```python
 from openai import OpenAI
 from .base import BaseLLM
 import json
 
-class DeepSeekLLM(BaseLLM):
+class KimiLLM(BaseLLM):
     def __init__(self, config: dict):
         self.client = OpenAI(
-            api_key=config["api_keys"]["deepseek"],
-            base_url="https://api.deepseek.com"
+            api_key=config["api_keys"]["kimi"],
+            base_url="https://api.moonshot.cn/v1"
         )
-        self.model = config.get("llm_model", "deepseek-chat")
+        self.model = config.get("llm_model", "moonshot-v1-8k")
 
     def chat(self, system: str, user: str) -> str:
         response = self.client.chat.completions.create(
@@ -157,7 +157,7 @@ class DeepSeekLLM(BaseLLM):
 ### llm_factory.py
 
 ```python
-from scripts.llm.deepseek import DeepSeekLLM
+from scripts.llm.kimi import KimiLLM
 from scripts.llm.openai import OpenAILLM
 from scripts.llm.anthropic import AnthropicLLM
 from scripts.llm.base import BaseLLM
@@ -165,7 +165,7 @@ from scripts.llm.base import BaseLLM
 def get_llm(config: dict) -> BaseLLM:
     provider = config["llm_provider"]
     match provider:
-        case "deepseek":   return DeepSeekLLM(config)
+        case "kimi":       return KimiLLM(config)
         case "openai":     return OpenAILLM(config)
         case "anthropic":  return AnthropicLLM(config)
         case _:            raise ValueError(f"未知的 LLM provider: {provider}")
@@ -1066,7 +1066,7 @@ async function mountAvatars(config, avatarData) {
     "version": 4,
     "established_at": "2026-06-01",
     "last_evolved_at": "2026-06-15",
-    "base_image_seed": "deepseek_seed_20260601_7a3f",
+    "base_image_seed": "kimi_seed_20260601_7a3f",
     "core_traits": ["注重细节", "内向", "逻辑导向"],
     "visual_anchors": ["眼镜", "深色系穿搭", "短发"],
     "style_era": {

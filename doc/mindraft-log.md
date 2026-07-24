@@ -9,7 +9,7 @@
 
 **当前阶段**：Phase 0（未开始）
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-06-19
+**最后更新**：2026-07-24
 
 ---
 
@@ -65,7 +65,7 @@
 |----|------|
 | **决策** | 通过 `BaseLLM` 抽象类 + `llm_factory.py` 实现多 LLM 支持，切换模型只需改 `config.yml` 一行 |
 | **理由** | 不绑定特定模型；降低迁移成本；支持按需选用最优/最省的模型 |
-| **影响** | 所有业务代码只依赖 `BaseLLM`，不直接引用 DeepSeek / OpenAI 等具体实现 |
+| **影响** | 所有业务代码只依赖 `BaseLLM`，不直接引用 Kimi / OpenAI 等具体实现 |
 | **状态** | ✅ 已确认 |
 
 ---
@@ -207,7 +207,7 @@ mindraft/
 
 | 类别 | 可选值 |
 |------|--------|
-| LLM 提供者 | `deepseek` \| `openai` \| `anthropic` |
+| LLM 提供者 | `kimi` \| `openai` \| `anthropic` |
 | 渲染器类型 | `text_card` \| `pixel_art` \| `animated_sprite` \| `game` |
 | 变化量级 | `micro` \| `macro` \| `transformation` |
 | Memory 操作 | `APPEND_TO` \| `SET_IF_NEW`（仅这两种，其余忽略） |
