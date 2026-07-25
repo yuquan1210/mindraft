@@ -25,7 +25,7 @@
 
 ```yaml
 # 笔记仓库路径（指向 notes-vault 本地路径）
-notes_vault_path: ~/Documents/notes-vault
+notes_vault_path: ~/Developer/GitHub/notes-vault
 
 # LLM 配置（改 llm_provider 这一行切换模型）
 llm_provider: kimi           # kimi | openai | anthropic

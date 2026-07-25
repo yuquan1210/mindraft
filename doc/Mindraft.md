@@ -252,7 +252,7 @@ mindraft/
 
 | 配置项 | 说明 | 示例值 |
 |--------|------|--------|
-| `notes_vault_path` | 笔记仓库本地路径 | `~/Documents/notes-vault` |
+| `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
 | `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic` |
 | `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_art \| game` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |

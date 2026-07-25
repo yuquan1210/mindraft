@@ -27,7 +27,7 @@ Agent 的职责：写代码、解决技术细节、输出可运行的结果
 在本地创建 mindraft 项目目录，然后用 Agent 打开它：
 
 ```
-mkdir ~/Developer/mindraft && cd ~/Developer/mindraft
+mkdir ~/Developer/GitHub/mindraft && cd ~/Developer/GitHub/mindraft
 ```
 
 ### 1.2 配置 MCP Server（关键）
@@ -46,8 +46,8 @@ MCP (Model Context Protocol) Server 让 Agent 拥有超出聊天窗口的能力�
       "args": [
         "-y",
         "@anthropic-ai/mcp-filesystem@latest",
-        "/Users/你的用户名/Developer/mindraft",
-        "/Users/你的用户名/Documents/notes-vault"
+        "/Users/你的用户名/Developer/GitHub/mindraft",
+        "/Users/你的用户名/Developer/GitHub/notes-vault"
       ]
     }
   }

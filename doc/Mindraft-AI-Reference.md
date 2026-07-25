@@ -227,7 +227,7 @@ mindraft/
 
 | 配置项 | 说明 | 典型值 |
 |--------|------|--------|
-| `notes_vault_path` | 笔记仓库本地路径 | `~/Documents/notes-vault` |
+| `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
 | `llm_provider` | 切换 LLM | `kimi \| openai \| anthropic` |
 | `llm_model` | 模型名 | `moonshot-v1-32k` |
 | `api_keys.*` | 环境变量占位 | `${KIMI_API_KEY}` |
