@@ -980,6 +980,7 @@ run.py 执行
 
 **实现内容**
 - 目录结构初始化（notes-vault + mindraft 双 repo 结构）
+- 虚拟环境配置：创建 `.venv`、生成 `requirements.txt`
 - `config.yml` 配置文件
 - LLM 抽象层（`base.py` + `kimi.py` + `llm_factory.py`）
 - `run.py` CLI 骨架（能解析参数，能读取 config）
@@ -995,7 +996,8 @@ run.py 执行
 - `filelock`（进程级文件锁）
 
 **验收标准**
-- `python run.py --dry-run` 执行不报错，不写入任何文件
+- `requirements.txt` 已创建，包含全部依赖
+- 在虚拟环境中执行 `pip install -r requirements.txt` 后，`python run.py --dry-run` 执行不报错，不写入任何业务状态文件
 - 调用 LLM API 返回正常响应（可通过临时测试脚本验证）
 - 日志输出到控制台和文件
 - 并发执行时第二个实例被拒绝
