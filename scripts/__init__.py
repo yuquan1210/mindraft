@@ -1,0 +1,1 @@
+# Mindraft scripts package

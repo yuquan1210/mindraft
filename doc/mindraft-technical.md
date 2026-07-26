@@ -123,7 +123,7 @@ class KimiLLM(BaseLLM):
     def __init__(self, config: dict):
         self.client = OpenAI(
             api_key=config["api_keys"]["kimi"],
-            base_url="https://api.moonshot.cn/v1"
+            base_url="https://api.kimi.com/coding/v1"
         )
         self.model = config.get("llm_model", "moonshot-v1-8k")
 

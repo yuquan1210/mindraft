@@ -1,0 +1,5 @@
+# Mindraft 基础依赖
+openai>=1.30.0
+pyyaml>=6.0
+jsonschema>=4.17.0
+filelock>=3.13.0

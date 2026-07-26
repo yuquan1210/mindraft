@@ -1,0 +1,59 @@
+# Mindraft 配置文件
+# 运行时通过 config.yml 关联 notes-vault 笔记仓库
+
+# 笔记仓库路径（指向 notes-vault 本地路径）
+notes_vault_path: ~/Developer/GitHub/notes-vault
+
+# LLM 配置（改 llm_provider 这一行切换模型）
+llm_provider: kimi           # kimi | openai | anthropic
+llm_model: moonshot-v1-32k
+
+# API Keys（建议用环境变量，此处为占位）
+api_keys:
+  kimi:      ${KIMI_API_KEY}
+  openai:    ${OPENAI_API_KEY}
+  anthropic: ${ANTHROPIC_API_KEY}
+  replicate: ${REPLICATE_API_KEY}
+
+# 记忆压缩阈值（估算 token 数）
+memory:
+  active_memory_token_threshold: 1500
+  compression_target_ratio: 0.55
+
+# Skill 开关
+skills:
+  note_style:
+    enabled: true
+  summary_style:
+    enabled: true
+  tagging:
+    enabled: true
+  analysis_style:
+    enabled: true
+  memory_compression:
+    enabled: true
+
+# 笔记预筛选
+note_filter:
+  skip_empty: true                    # 跳过空文件
+  min_meaningful_chars: 20            # 低于此字符数视为无意义笔记
+  batch_short_notes: true             # 将短笔记合并为一次 LLM 调用
+  batch_max_notes: 5                  # 单次批量处理最大笔记数
+  batch_char_threshold: 200           # 单篇低于此字符数视为"短笔记"，可合并
+
+# 日志配置
+logging:
+  level: INFO                         # DEBUG | INFO | WARNING | ERROR
+  file: analysis/process_log.jsonl    # 日志输出路径（相对于 notes_vault_path）
+
+# Token 估算方式
+token_estimation: char_ratio           # char_ratio | tiktoken
+
+# 用户画像渲染配置（改 renderer 这一行切换渲染器）
+avatar:
+  renderer: text_card       # text_card | pixel_art | animated_sprite | game
+  work_scene: studio
+  home_scene: home
+
+# Dashboard 本地服务端口
+dashboard_port: 8080
