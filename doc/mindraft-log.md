@@ -7,9 +7,9 @@
 
 ## 项目状态
 
-**当前阶段**：Phase 0（未开始）
+**当前阶段**：Phase 0 ✅ 已完成
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-06-19
+**最后更新**：2026-07-25
 
 ---
 
@@ -65,7 +65,7 @@
 |----|------|
 | **决策** | 通过 `BaseLLM` 抽象类 + `llm_factory.py` 实现多 LLM 支持，切换模型只需改 `config.yml` 一行 |
 | **理由** | 不绑定特定模型；降低迁移成本；支持按需选用最优/最省的模型 |
-| **影响** | 所有业务代码只依赖 `BaseLLM`，不直接引用 DeepSeek / OpenAI 等具体实现 |
+| **影响** | 所有业务代码只依赖 `BaseLLM`，不直接引用 Kimi / OpenAI 等具体实现 |
 | **状态** | ✅ 已确认 |
 
 ---
@@ -162,7 +162,7 @@
 
 | 阶段 | 状态 | 完成日期 | 核心产物 |
 |------|------|---------|---------|
-| Phase 0：基础骨架 | ⬜ 未开始 | — | `config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
+| Phase 0：基础骨架 | ✅ 已完成 | 2026-07-25 | `.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
 | Phase 1：笔记处理核心 | ⬜ 未开始 | — | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
 | Phase 2：Dashboard MVP | ⬜ 未开始 | — | `analyze.py`、Dashboard HTML/JS、`serve.py` |
 | Phase 3：记忆系统完善 | ⬜ 未开始 | — | 记忆压缩、MBTI 描述、Road Map |
@@ -207,7 +207,7 @@ mindraft/
 
 | 类别 | 可选值 |
 |------|--------|
-| LLM 提供者 | `deepseek` \| `openai` \| `anthropic` |
+| LLM 提供者 | `kimi` \| `openai` \| `anthropic` |
 | 渲染器类型 | `text_card` \| `pixel_art` \| `animated_sprite` \| `game` |
 | 变化量级 | `micro` \| `macro` \| `transformation` |
 | Memory 操作 | `APPEND_TO` \| `SET_IF_NEW`（仅这两种，其余忽略） |
@@ -241,3 +241,37 @@ mindraft/
 > 每阶段完成后，AI Agent 在此追加汇总，包括：完成内容、主要决策、遇到的问题、下一阶段建议。
 
 （尚未开始实现）
+
+---
+
+### Phase 0 实现汇总（2026-07-25）
+
+**完成内容**
+1. 创建项目基础文件：`.gitignore`、`.env.example`、`requirements.txt`
+2. 创建 `config.yml`：配置 notes-vault 路径、LLM provider、API keys、skill 开关、日志与 token 估算等
+3. 搭建 LLM 抽象层：`scripts/llm/base.py`（抽象基类 + JSON 兜底解析）、`scripts/llm/kimi.py`、`scripts/llm/openai.py`、`scripts/llm/anthropic.py`、`scripts/llm_factory.py`
+4. 创建基础设施 `scripts/utils.py`：配置加载（含 `${ENV}` 占位符解析）、`token_estimate()`、`safe_write_json()` 原子写入、`get_process_lock()` 进程锁、`setup_logging()` 日志初始化
+5. 创建 `scripts/schemas.py`：`PROCESS_NOTE_SCHEMA`、`BATCH_PROCESS_SCHEMA`、`validate_llm_output()`
+6. 创建 `scripts/prompts.py`：统一 Base Role 定义
+7. 创建 `run.py` CLI 入口：支持 `--dry-run`、`--notes-only`、`--analyze`、`--serve` 参数，dry-run 不写入业务状态文件
+8. 创建占位模块 `scripts/process_notes.py`、`scripts/analyze.py`、`scripts/serve.py`，确保 run.py 各模式可导入不崩溃
+9. 修正 `scripts/llm/kimi.py` 的 base URL 为官方最新地址 `https://api.kimi.com/coding/v1`（同步更新 `doc/Mindraft-Technical.md` 示例）
+10. 将验证脚本移入 `tests/` 目录：`tests/test_llm_mock.py`（mock 测试）、`tests/test_llm_real.py`（真实 API 测试）
+
+**验证结果**
+- `pip install -r requirements.txt` 成功
+- `python run.py --dry-run` 成功执行，控制台与日志文件均有输出，未写入 `memory.json` 等业务状态文件
+- 并发测试：第二个 `run.py` 实例被进程锁拒绝，退出码 1
+- LLM 抽象层通过 mock 测试：文本对话、JSON 模式、markdown 代码块兜底解析均正常
+- 真实 Kimi API 调用测试通过：文本对话与 JSON 模式均返回正常响应
+
+**主要决策**
+- `_resolve_env_placeholders()` 对未设置的环境变量保留原样，不强制所有 provider 的 key 必须同时存在，降低多 provider 配置门槛
+- `llm_factory.py` 中 Anthropic provider 采用延迟导入，避免未安装 `anthropic` 包时模块级崩溃
+- `setup_logging()` 在重复调用时清除旧 handler，防止日志重复输出
+- Kimi base URL 确定为 `https://api.kimi.com/coding/v1`（已同步更新代码与 `doc/Mindraft-Technical.md`）
+
+**待确认问题**
+1. ✅ `notes_vault_path` 已确认：`~/Developer/GitHub/notes-vault` 正确
+2. ✅ 验证脚本已移入 `tests/` 目录
+3. ✅ 真实 Kimi API 调用测试通过，Phase 0 可进入人工审查

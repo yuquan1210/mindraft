@@ -1,0 +1,9 @@
+# Mindraft 基础依赖
+openai>=1.30.0
+pyyaml>=6.0
+jsonschema>=4.17.0
+filelock>=3.13.0
+
+# 可选依赖
+# anthropic      # 使用 llm_provider=anthropic 时安装
+# tiktoken     # 使用 token_estimation=tiktoken 时安装
