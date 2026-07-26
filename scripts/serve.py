@@ -24,8 +24,7 @@ def start_server(config: dict):
     logger.info(f"Dashboard 占位服务器启动: http://localhost:{port}")
     logger.info(f"服务目录: {dashboard_dir}")
 
-    # Phase 0 不实际阻塞启动服务器，仅打印日志便于验收
-    # Phase 2 替换为实际 socketserver.TCPServer
+    # Phase 0 启动基础 HTTP 服务，Phase 2 补充完整前端静态文件服务
     with socketserver.TCPServer(("", port), Handler) as httpd:
         logger.info("按 Ctrl+C 停止服务器")
         try:

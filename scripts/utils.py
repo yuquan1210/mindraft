@@ -34,15 +34,6 @@ def _resolve_env_placeholders(value):
     return value
 
 
-def _validate_required_api_key(config: dict):
-    """校验当前选中的 LLM provider 是否已配置 API Key。"""
-    provider = config.get("llm_provider")
-    api_keys = config.get("api_keys", {})
-    key = api_keys.get(provider, "")
-    if not key or key.startswith("${"):
-        raise ValueError(f"LLM provider '{provider}' 缺少 API Key，请在环境变量中设置")
-
-
 def load_config(path: str = "config.yml") -> dict:
     """加载 config.yml，解析环境变量占位符，并展开 notes_vault_path 中的 ~。"""
     config_path = Path(path)
