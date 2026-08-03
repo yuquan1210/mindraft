@@ -37,9 +37,9 @@ skills:
 note_filter:
   skip_empty: true                    # 跳过空文件
   min_meaningful_chars: 20            # 低于此字符数视为无意义笔记
-  batch_short_notes: true             # 将短笔记合并为一次 LLM 调用
-  batch_max_notes: 5                  # 单次批量处理最大笔记数
-  batch_char_threshold: 200           # 单篇低于此字符数视为"短笔记"，可合并
+  batch_short_notes: false            # Phase 1 不做 batching，未来优化项
+  batch_max_notes: 5                  # 单次批量处理最大笔记数（未来使用）
+  batch_char_threshold: 200           # 单篇低于此字符数视为"短笔记"（未来使用）
 
 # 日志配置
 logging:

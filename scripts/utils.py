@@ -166,3 +166,39 @@ def setup_logging(config: dict):
 def today_iso() -> str:
     """返回当前日期的 ISO 格式字符串（YYYY-MM-DD）。"""
     return datetime.now().strftime("%Y-%m-%d")
+
+
+# ── 字典点号路径访问 ──────────────────────────────────────────
+def get_nested(data: dict, path: str):
+    """按点号路径获取字典嵌套值。路径不存在时返回 None。"""
+    if not path:
+        return data
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+def set_nested(data: dict, path: str, value):
+    """按点号路径设置字典嵌套值，路径不存在时自动创建中间字典。"""
+    keys = path.split(".")
+    current = data
+    for key in keys[:-1]:
+        if key not in current or not isinstance(current[key], dict):
+            current[key] = {}
+        current = current[key]
+    current[keys[-1]] = value
+
+
+def exists_nested(data: dict, path: str) -> bool:
+    """按点号路径判断字典嵌套值是否存在。"""
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return False
+        current = current[key]
+    return True

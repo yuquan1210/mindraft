@@ -3,32 +3,32 @@ from jsonschema import validate, ValidationError
 # process_note 操作的 LLM 返回结构
 PROCESS_NOTE_SCHEMA = {
     "type": "object",
-    "required": ["category", "tags", "summary", "rewritten_content", "memory_updates"],
+    "required": ["title", "category", "tags", "summary", "rewritten_content", "memory_updates"],
     "properties": {
-        "category": {"type": "string", "pattern": "^(work|life|study)/"},
-        "tags": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+        "title": {"type": "string", "minLength": 1, "maxLength": 80},
+        "category": {
+            "type": "string",
+            "pattern": "^(work|life|growth|wellbeing|identity)/",
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "maxLength": 40,
+            },
+            "maxItems": 3,
+        },
         "summary": {"type": "string", "maxLength": 60},
         "rewritten_content": {"type": "string", "minLength": 1},
         "questions": {"type": "array", "items": {"type": "string"}},
-        "related_notes": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["path", "strength", "reason"],
-                "properties": {
-                    "path": {"type": "string"},
-                    "strength": {"type": "string", "enum": ["high", "medium"]},
-                    "reason": {"type": "string"},
-                },
-            },
-        },
         "memory_updates": {
             "type": "array",
             "items": {
                 "type": "object",
                 "required": ["action", "path", "value"],
                 "properties": {
-                    "action": {"type": "string"},
+                    "action": {"type": "string", "enum": ["APPEND_TO", "SET_IF_NEW"]},
                     "path": {"type": "string"},
                     "value": {},
                 },
@@ -37,7 +37,7 @@ PROCESS_NOTE_SCHEMA = {
     },
 }
 
-# 批量处理多篇笔记时的返回结构
+# 批量处理多篇笔记时的返回结构（Phase 1 不使用，保留接口）
 BATCH_PROCESS_SCHEMA = {
     "type": "object",
     "required": ["notes"],

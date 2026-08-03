@@ -30,11 +30,12 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 
 ## 2. 当前状态（来自 Mindraft-Log.md）
 
-- **当前阶段**：Phase 0（未开始）
-- **最后更新**：2026-07-24
+- **当前阶段**：Phase 1（已完成）→ Phase 2（未开始）
+- **最后更新**：2026-07-26
 - **实现方式**：Vibe-coding —— AI 实现代码，人工审查 + 指挥
 - **所有 ADR 已确认**：ADR-001 ~ ADR-013
 - **待解决问题**：无
+- **Phase 1 延后项**：batching 短笔记合并、summary_style.yml、relationships、URL 抓取、追问交互、像素画形象
 
 ---
 
@@ -123,22 +124,44 @@ mindraft/
     "work": {
       "current_focus": "登录模块重构，卡在权限设计上",
       "ongoing_projects": ["认证系统", "dashboard迁移"],
+      "goals": ["提升代码可维护性"],
+      "energy_pattern": "上午效率高，下午容易疲惫",
+      "stress_sources": ["权限设计边界不清晰"],
       "recurring_signals": ["容易在细节上花过多时间"],
       "recent_mood_trend": "疲惫但有动力"
     },
     "life": {
       "current_routines": ["早上健身", "周末做饭"],
+      "interests_observed": ["电影", "编程", "烹饪"],
+      "social_connections": ["朋友A"],
+      "places": ["家", "健身房"],
+      "important_people": ["mentor"],
       "recurring_signals": ["睡眠不规律是持续困扰"],
-      "interests_observed": ["电影", "编程", "烹饪"]
+      "recent_mood_trend": "稳定"
     },
-    "personality_signals": [
-      "偏内向，独处时恢复能量",
-      "目标感强，对自身完美主义有自我觉察"
-    ]
+    "growth": {
+      "learning_topics": ["系统设计", "权限模型"],
+      "active_skills": ["Python", "React"],
+      "challenges": ["分布式事务"],
+      "recurring_signals": ["喜欢通过项目实践学习"]
+    },
+    "wellbeing": {
+      "physical_patterns": ["早上健身", "久坐"],
+      "mental_patterns": ["压力大时容易过度思考"],
+      "recovery_activities": ["看电影", "散步"],
+      "recurring_signals": ["睡眠不足时效率下降"]
+    },
+    "identity": {
+      "core_traits": ["注重细节", "内向", "逻辑导向"],
+      "values": ["质量优先", "持续学习"],
+      "self_perception": ["偏内向，独处时恢复能量", "目标感强，对自身完美主义有自我觉察"],
+      "mbti_hints": ["偏好结构化思考", "对抽象概念感兴趣"],
+      "recurring_signals": ["独处时恢复能量"]
+    }
   },
   "tag_candidates": {
-    "backend": { "count": 5, "status": "active" },
-    "sprint": { "count": 3, "status": "active" },
+    "backend": { "count": 5, "status": "pending" },
+    "sprint": { "count": 3, "status": "pending" },
     "side-project": { "count": 2, "status": "pending" }
   },
   "history_archive": [
@@ -288,7 +311,7 @@ mindraft/
 | 5 | 笔记关联增强 | `relationships.json`、URL 摘要 |
 | 6 | 像素画形象 | Replicate API、PixelArtRenderer |
 
-**当前阶段：Phase 0（未开始）。**
+**当前阶段：Phase 1（已完成）→ Phase 2（未开始）。**
 
 ---
 
