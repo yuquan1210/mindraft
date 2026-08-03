@@ -4,7 +4,6 @@ from pathlib import Path
 
 from filelock import Timeout
 
-from scripts.llm_factory import get_llm
 from scripts.utils import load_config, get_process_lock, setup_logging
 
 
@@ -33,13 +32,10 @@ def main():
     try:
         with lock:
             if args.dry_run:
-                logger.info("--dry-run 模式：仅验证配置与基础设施，不写入业务状态文件")
-                # Phase 0：验证 LLM 抽象层可初始化（不实际调用 API）
-                try:
-                    llm = get_llm(config)
-                    logger.info(f"LLM provider 初始化成功: {type(llm).__name__}")
-                except Exception as e:
-                    logger.warning(f"LLM provider 初始化失败（可能未设置 API Key）: {e}")
+                from scripts.process_notes import process_new_notes
+
+                logger.info("--dry-run 模式：调用 LLM 处理笔记，但不写入业务状态文件")
+                process_new_notes(config, dry_run=True)
                 logger.info("Dry-run 完成")
                 return
 

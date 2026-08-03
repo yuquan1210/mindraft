@@ -7,9 +7,9 @@
 
 ## 项目状态
 
-**当前阶段**：Phase 0 ✅ 已完成
+**当前阶段**：Phase 1 ✅ 已完成 → Phase 2 ⬜ 未开始
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-07-25
+**最后更新**：2026-07-26
 
 ---
 
@@ -163,12 +163,50 @@
 | 阶段 | 状态 | 完成日期 | 核心产物 |
 |------|------|---------|---------|
 | Phase 0：基础骨架 | ✅ 已完成 | 2026-07-25 | `.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
-| Phase 1：笔记处理核心 | ⬜ 未开始 | — | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
+| Phase 1：笔记处理核心 | ✅ 已完成 | 2026-07-26 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
 | Phase 2：Dashboard MVP | ⬜ 未开始 | — | `analyze.py`、Dashboard HTML/JS、`serve.py` |
 | Phase 3：记忆系统完善 | ⬜ 未开始 | — | 记忆压缩、MBTI 描述、Road Map |
 | Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
 | Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
 | Phase 6：像素画形象 | ⬜ 未开始 | — | Replicate API、PixelArtRenderer |
+
+---
+
+## Grilling 记录（持续更新）
+
+> 每次 grilling 会议后追加记录，包括关键决策、待确认想法、延后项。
+
+### 2026-07-26 Phase 1 规划 grilling
+
+**决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 范围边界 | 以 `Mindraft.md` §9 为准；Phase 1 只实现核心笔记处理链路，不提前实现压缩、tag 升级、summary_style、relationships 等 |
+| `memory.json` 结构 | 硬编码五域：`work`, `life`, `growth`, `wellbeing`, `identity`，不允许 LLM 新增自定义域 |
+| `memory_updates` path | 点号路径，如 `work.ongoing_projects` |
+| 非法 action | 静默忽略 + `logger.warning` |
+| `ai_notes/` 目录映射 | `ai_notes/{category}/{filename}` |
+| 文件名生成 | LLM 生成英文 `title`，系统 slugify，例如 `productive-friday.md` |
+| 重复文件名 | 追加数字，例如 `productive-friday-2.md` |
+| 覆盖策略 | Phase 1 不覆盖；frontmatter 保留 `source` 字段用于后续映射 |
+| Batching | Phase 1 不做，作为未来优化项 |
+| 失败语义 | 失败跳过，不标记为已处理，下次重试 |
+| 视为失败的情况 | API 异常、JSON 解析失败、schema 校验失败、写入异常、非法 `category` |
+| Tags | 进入 `memory.json.tag_candidates`，只累计 `count`，`status: pending`，不升级；格式强制英文小写连字符 |
+| `--dry-run` | 调用 LLM，但不写入文件 |
+| 测试 | fixture-based mock 测试 + 人工验收 |
+| 文档更新 | Phase 1 完成后更新 `Mindraft-AI-Reference.md` 和 `Mindraft-Log.md` |
+
+**延后/待确认想法**
+
+- Batching 短笔记作为未来优化项
+- `summary_style.yml` 延后到 Phase 2/3
+- `related_notes` 从 Phase 1 schema 移除，延后到 Phase 5
+- Tag 升级机制（count ≥ 3 → active）延后到 Phase 3
+- Dashboard 可视化可简化（静态列表/卡片替代 Chart.js 柱状图和 CSS Grid 热力图）
+- Phase 6 像素画形象作为最后增强项
+- URL 抓取、追问交互、关系网络图可视化延后到 Phase 5+ 优化
 
 ---
 
@@ -275,3 +313,51 @@ mindraft/
 1. ✅ `notes_vault_path` 已确认：`~/Developer/GitHub/notes-vault` 正确
 2. ✅ 验证脚本已移入 `tests/` 目录
 3. ✅ 真实 Kimi API 调用测试通过，Phase 0 可进入人工审查
+
+---
+
+### Phase 1 实现汇总（2026-07-26）
+
+**完成内容**
+1. 创建 `skills/` 目录与 Skill 配置：`skills/note_style.yml`、`skills/tagging.yml`。
+2. 创建 `scripts/skill_loader.py`：按 operation 与启用开关自动拼装 system prompt。
+3. 重写 `scripts/prompts.py` 中 `NOTE_PROCESSOR_ROLE`：明确五域 `active_memory` 结构、合法 `memory_updates` 路径与操作、输出 JSON 格式。
+4. 更新 `scripts/schemas.py`：`PROCESS_NOTE_SCHEMA` 增加 `title`、category 改为五域（`work|life|growth|wellbeing|identity`）、`memory_updates.action` 收紧为 enum、`tags` 增加英文小写连字符 pattern；移除 `related_notes`（Phase 5 使用）。
+5. 调整 `config.yml`：`note_filter.batch_short_notes` 设为 `false`，明确 Phase 1 不做 batching。
+6. 创建 `scripts/note_filter.py`：跳过空文件、过短内容、无自然语言笔记；`group_notes_for_processing` Phase 1 逐篇返回。
+7. 扩展 `scripts/utils.py`：新增 `get_nested()` / `set_nested()` / `exists_nested()` 支持点号路径字典访问。
+8. 重写 `scripts/process_notes.py`：
+   - `create_initial_memory()`：五域硬编码结构。
+   - `process_new_notes()`：扫描 → 过滤 → 逐篇 LLM 处理 → schema 校验 → 写入 `ai_notes/` → 应用 `memory_updates` → 更新 `tag_candidates` → 逐篇 checkpoint 持久化 `memory.json`。
+   - `apply_memory_updates()`：仅 `APPEND_TO` / `SET_IF_NEW`，非法操作静默忽略并 warning。
+   - `write_ai_note()`：按 `ai_notes/{category}/{slug}.md` 写入，重复文件名追加 `-2`、`-3`，不覆盖，frontmatter 含 `source`。
+   - `update_tag_candidates()`：累计 `count`，`status` 固定 `pending`。
+9. 更新 `run.py`：`--dry-run` 调用 `process_new_notes(dry_run=True)`；`--notes-only` 调用完整处理流程。
+10. 创建 `tests/test_process_notes.py`：fixture mock 测试覆盖正常处理、dry-run 不写入、跳过笔记、失败重试四种场景。
+
+**验证结果**
+- `python tests/test_process_notes.py` 通过：ai_notes 输出、memory.json 更新、tag_candidates 累计、失败不标记均正常。
+- `python tests/test_llm_mock.py` 通过，未破坏既有 LLM 抽象层测试。
+- 使用真实 Kimi API 在临时 vault（2 篇笔记）上执行 dry-run，成功调用 LLM 并返回正确 category，未写入文件。
+- 在真实 `notes-vault`（22 篇笔记）上执行 `python run.py --dry-run` 可达第 2 篇笔记处理，因 21 次 API 调用总耗时超过 300 秒前台超时；改为小批量验证后确认 pipeline 可用。
+
+**主要决策**
+- `active_memory` 采用硬编码五域：`work`、`life`、`growth`、`wellbeing`、`identity`；不允许 LLM 新增自定义域。
+- `memory_updates` 使用点号路径，非法 action 静默忽略并记录 warning。
+- `ai_notes/` 文件名由 LLM 生成英文 title 经 slugify 得到，重复时追加数字，Phase 1 不覆盖已存在文件。
+- Phase 1 不做 batching、不做记忆压缩、不做 tag 升级、不处理 `related_notes`。
+- 失败语义：单篇失败跳过，不标记为已处理，下次运行自动重试。
+
+**遇到的问题**
+- 真实 vault 22 篇笔记 dry-run 前台超时：API 调用顺序执行，总耗时超过 300 秒。计划在 Phase 2 考虑加入 rate/timeout 控制或允许用户分批处理，不作为 Phase 1 阻塞项。
+
+**下一阶段建议**
+- Phase 2：Dashboard MVP，优先做最小静态页面（笔记列表 + memory 摘要 + 每日一句），可视化图表可延后。
+
+**待确认问题**
+1. ✅ 五域 `active_memory` 结构已确认
+2. ✅ `memory_updates` 路径与 action 语义已确认
+3. ✅ `ai_notes/` 目录映射、文件名生成、覆盖策略已确认
+4. ✅ 失败语义已确认
+5. ✅ Tags Phase 1 只累计不升级已确认
+6. ✅ `--dry-run` 调用 LLM 但不写入已确认
