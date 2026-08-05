@@ -49,6 +49,27 @@ BATCH_PROCESS_SCHEMA = {
     },
 }
 
+# Dashboard analyze 阶段 LLM 返回结构
+DASHBOARD_SUMMARY_SCHEMA = {
+    "type": "object",
+    "required": [
+        "daily_insight",
+        "work_summary",
+        "life_summary",
+        "growth_summary",
+        "wellbeing_summary",
+        "identity_summary",
+    ],
+    "properties": {
+        "daily_insight": {"type": "string", "maxLength": 220},
+        "work_summary": {"type": "string"},
+        "life_summary": {"type": "string"},
+        "growth_summary": {"type": "string"},
+        "wellbeing_summary": {"type": "string"},
+        "identity_summary": {"type": "string"},
+    },
+}
+
 
 def validate_llm_output(data: dict, schema: dict) -> tuple[bool, str]:
     """校验 LLM 返回是否符合预期 schema，返回 (is_valid, error_message)"""

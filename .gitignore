@@ -33,3 +33,6 @@ build/
 # Mindraft runtime state (stored in notes-vault, not code repo)
 analysis/
 notes-vault/
+
+# Generated dashboard data
+dashboard/data/

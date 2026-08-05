@@ -208,6 +208,27 @@
 - Phase 6 像素画形象作为最后增强项
 - URL 抓取、追问交互、关系网络图可视化延后到 Phase 5+ 优化
 
+### 2026-08-03 Phase 2 规划 grilling
+
+**决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 范围边界 | 最小静态 Dashboard MVP：最近笔记列表 + active_memory 五域摘要 + tag_candidates + 每日一句 + 暗色主题 + 本地服务器。不做 Chart.js 字数图、CSS Grid 热力图、形象、记忆压缩、跨周快照。 |
+| 数据文件 | 全部写入 `mindraft/dashboard/data/`：`summaries.json`、`stats.json`、`recent_notes.json`、`config.json` |
+| 每日一句 + 五域摘要 | 合并为一次 LLM 调用，prompt 硬编码在 `scripts/prompts.py`，返回 JSON 经 schema 校验 |
+| 每日一句风格 | 带情绪/叙事色彩，像安静观察者，150 字以内，中文 |
+| 五域摘要 | 每域一句自然语言，顺序固定 work/life/growth/wellbeing/identity |
+| 最近笔记列表 | 最多 10 篇，按 `memory.json.processed_notes` 顺序，最后处理在前；`processed_at` 取 `ai_notes/` 文件 mtime |
+| `stats.json` | 总笔记数 + 五域 category 计数 |
+| 主题/响应式 | 只做 dark 主题，桌面优先 |
+| `run.py` 默认行为 | 只处理新笔记；`--analyze` 生成数据 + 启动服务器 + 打开浏览器；`--serve` 只启动服务器；`--dry-run` 不写入 |
+| `--analyze --dry-run` | 调用 LLM 但不写入文件、不启动服务器、不打开浏览器 |
+| LLM 失败 | `summaries.json` fallback，`daily_insight` 显示固定文案，五域摘要为空，Dashboard 仍可启动 |
+| 测试 | 全人工验收，不写前端自动化测试 |
+| ADR-013 跨周快照 | 延后到 Phase 3，与 Road Map Timeline 一起实现 |
+| 文档更新 | 同步更新 `Mindraft.md` §9/§10、`Mindraft-AI-Reference.md` §7 |
+
 ---
 
 ## 关键约定
@@ -361,3 +382,65 @@ mindraft/
 4. ✅ 失败语义已确认
 5. ✅ Tags Phase 1 只累计不升级已确认
 6. ✅ `--dry-run` 调用 LLM 但不写入已确认
+
+---
+
+### Phase 2 实现汇总（2026-08-05）
+
+**完成内容**
+1. 扩展 `scripts/prompts.py`：新增 `DASHBOARD_SUMMARY_ROLE`，定义每日一句 + 五域摘要的生成任务，中文叙事风格。
+2. 扩展 `scripts/schemas.py`：新增 `DASHBOARD_SUMMARY_SCHEMA`，校验 LLM 返回的 6 个字段。
+3. 重写 `scripts/analyze.py`：
+   - 读取 `memory.json`；不存在时回退到空结构。
+   - 扫描 `ai_notes/` 生成 `recent_notes.json`（最多 10 篇，`processed_at` 取文件 mtime）。
+   - 统计五域 category 文件数量生成 `stats.json`。
+   - 调用一次 LLM 生成 `summaries.json`（每日一句 + 五域摘要 + `tag_candidates`）。
+   - LLM 失败时 fallback，Dashboard 仍可启动。
+   - dry-run 时调用 LLM 但不写入任何文件。
+4. 创建 Dashboard 前端：
+   - `dashboard/index.html`：暗色主题骨架，空状态提示。
+   - `dashboard/style.css`：暗色主题、桌面优先、响应式卡片布局。
+   - `dashboard/app.js`：异步加载 `data/config.json`、`summaries.json`、`stats.json`、`recent_notes.json` 并渲染。
+5. 更新 `scripts/serve.py`：支持 `open_browser` 参数，启动 `http.server` 服务 `dashboard/` 目录。
+6. 更新 `run.py` 命令语义：
+   - 默认只处理新笔记。
+   - `--analyze` 生成数据 + 启动服务器 + 自动打开浏览器。
+   - `--serve` 只启动服务器，不生成数据。
+   - `--dry-run` 不写入；`--analyze --dry-run` 不启动服务器/浏览器。
+7. 更新文档：
+   - `doc/Mindraft.md` §9 Phase 2 描述、§10 `run.py` 命令表。
+   - `doc/Mindraft-AI-Reference.md` §7 Phase 2 状态。
+   - `doc/Mindraft-Log.md` Phase 2 grilling 记录 + 本实现汇总。
+8. 更新 `.gitignore`：排除 `dashboard/data/` 生成数据文件。
+
+**验证结果**
+- `python3 -m py_compile` 通过 `scripts/analyze.py`、`scripts/serve.py`、`run.py`。
+- `python3 tests/test_process_notes.py` 与 `python3 tests/test_llm_mock.py` 通过，未破坏 Phase 1 功能。
+- 使用 mock LLM 验证 `analyze.py` 端到端：正确生成 `summaries.json`、`stats.json`、`recent_notes.json`、`config.json`。
+- 验证 `generate_dashboard_data(dry_run=True)`：调用 LLM 但不写入 `dashboard/data/`。
+- `serve.py` smoke test：在临时端口上成功返回 `index.html` 且包含关键结构。
+- 在临时测试 vault 上执行完整流程：`python run.py` 处理笔记 → `python run.py --analyze` 生成数据并自动打开浏览器，Dashboard 正确展示页眉、最后更新时间、每日一句、五域摘要卡片、tag 候选列表、最近 10 篇笔记列表。
+- 空状态测试：`rm -rf dashboard/data` 后执行 `python run.py --serve`，页面显示「还没有生成 dashboard 数据」。
+- LLM 失败 fallback 测试：临时改错 API key 后执行 `--analyze`，Dashboard 仍能启动并显示 fallback 提示。
+
+**主要决策**
+- Phase 2 采用最小静态 MVP：不做 Chart.js / 热力图，不做形象/压缩/跨周快照。
+- 每日一句 + 五域摘要合并为一次 LLM 调用，prompt 硬编码在 `scripts/prompts.py`。
+- 前端数据写入 `mindraft/dashboard/data/`，由 `.gitignore` 排除。
+- `run.py` 默认只处理笔记，`--analyze` 负责生成数据并启动服务。
+- LLM 失败时 Dashboard 仍可启动，显示 fallback 提示。
+- `processed_at` 使用 `ai_notes/` 文件 mtime，避免回改 Phase 1 `memory.json` schema。
+
+**遇到的问题**
+- 无。
+
+**下一阶段建议**
+- Phase 3：记忆压缩机制、`analysis_style.yml` skill、MBTI 描述、Road Map Timeline、Chart.js 字数图/活跃日历、跨周快照 ADR-013。
+
+**待确认问题**
+1. ✅ Phase 2 范围边界已确认
+2. ✅ 每日一句风格与五域摘要结构已确认
+3. ✅ `run.py` 新命令语义已确认
+4. ✅ 数据文件路径与 schema 已确认
+5. ✅ ADR-013 跨周快照延后到 Phase 3 已确认
+

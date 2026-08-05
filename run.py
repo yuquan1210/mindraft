@@ -1,5 +1,4 @@
 import argparse
-import webbrowser
 from pathlib import Path
 
 from filelock import Timeout
@@ -21,10 +20,9 @@ def main():
     logger.info(f"Mindraft 启动 | dry_run={args.dry_run}")
 
     if args.serve:
-        # Phase 0 仅启动基础占位服务器，后续 Phase 实现完整 Dashboard
         from scripts.serve import start_server
 
-        start_server(config)
+        start_server(config, open_browser=False)
         return
 
     # 获取进程锁，防止并发执行（dry-run 模式下也获取锁，保证并发安全）
@@ -33,10 +31,15 @@ def main():
         with lock:
             if args.dry_run:
                 from scripts.process_notes import process_new_notes
+                from scripts.analyze import generate_dashboard_data
 
-                logger.info("--dry-run 模式：调用 LLM 处理笔记，但不写入业务状态文件")
-                process_new_notes(config, dry_run=True)
-                logger.info("Dry-run 完成")
+                logger.info("--dry-run 模式：调用 LLM，但不写入任何业务状态文件")
+                if args.analyze:
+                    generate_dashboard_data(config, dry_run=True)
+                    logger.info("Analyze dry-run 完成")
+                else:
+                    process_new_notes(config, dry_run=True)
+                    logger.info("Dry-run 完成")
                 return
 
             if args.analyze:
@@ -44,7 +47,7 @@ def main():
                 from scripts.serve import start_server
 
                 generate_dashboard_data(config, dry_run=False)
-                start_server(config)
+                start_server(config, open_browser=True)
                 return
 
             if args.notes_only:
@@ -53,15 +56,10 @@ def main():
                 process_new_notes(config, dry_run=False)
                 return
 
-            # 默认：完整执行
+            # 默认：只处理新笔记
             from scripts.process_notes import process_new_notes
-            from scripts.analyze import generate_dashboard_data
-            from scripts.serve import start_server
 
             process_new_notes(config, dry_run=False)
-            generate_dashboard_data(config, dry_run=False)
-            start_server(config)
-            webbrowser.open(f"http://localhost:{config['dashboard_port']}")
     except Timeout:
         logger.error("另一个 Mindraft 实例正在运行，请等待其完成后再试")
         raise SystemExit(1)

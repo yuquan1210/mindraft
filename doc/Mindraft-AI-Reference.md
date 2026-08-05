@@ -305,13 +305,13 @@ mindraft/
 |-------|------|---------|
 | 0 | 基础骨架 | `.venv`、`.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`utils.py`、`schemas.py`、`prompts.py`、`run.py` |
 | 1 | 笔记处理核心 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
-| 2 | Dashboard MVP | `analyze.py`、前端 HTML/JS、`serve.py` |
-| 3 | 记忆系统完善 | 记忆压缩、MBTI 描述、Road Map |
+| 2 | Dashboard MVP | `analyze.py`、前端 HTML/JS、`serve.py`、dashboard/data/*.json |
+| 3 | 记忆系统完善 | 记忆压缩、MBTI 描述、Road Map、跨周快照 ADR-013、Chart.js 字数图/活跃日历 |
 | 4 | 用户形象 TextCard | `avatar_data.json`、TextCardRenderer |
 | 5 | 笔记关联增强 | `relationships.json`、URL 摘要 |
 | 6 | 像素画形象 | Replicate API、PixelArtRenderer |
 
-**当前阶段：Phase 1（已完成）→ Phase 2（未开始）。**
+**当前阶段：Phase 2（进行中）。**
 
 ---
 

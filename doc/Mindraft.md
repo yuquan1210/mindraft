@@ -1027,20 +1027,29 @@ run.py 执行
 
 ### Phase 2 — Dashboard MVP
 
-**目标**：浏览器可以看到有真实笔记数据的 Dashboard
+**目标**：浏览器可以看到有真实笔记数据的 Dashboard（最小静态版本）
 
 **实现内容**
-- `analyze.py`：从 memory.json 生成 `stats.json`、`summaries.json`
-- Dashboard HTML/CSS 骨架（index.html + style.css）
-- 字数趋势图（Chart.js 柱状图）
-- 活跃日历（CSS Grid 热力图）
-- 每日一句摘要卡片
-- `serve.py`：启动本地 HTTP 服务器
+- `analyze.py`：从 `memory.json` 生成 `summaries.json`、`stats.json`、`recent_notes.json`、`config.json`
+- Dashboard 前端（`index.html` + `style.css` + `app.js`）：暗色主题、桌面优先
+- 最近处理笔记列表（最多 10 篇）
+- `active_memory` 五域一句话摘要卡片
+- `tag_candidates` 列表
+- 每日一句洞察卡片（带叙事色彩，基于 `active_memory`）
+- `serve.py`：启动本地 HTTP 服务器，并自动打开浏览器
+- `run.py` 命令语义调整：默认只处理笔记，`--analyze` 生成数据并启动服务
+
+**不做内容**
+- Chart.js 字数趋势图、CSS Grid 活跃日历（延后到 Phase 3/5）
+- 用户形象（Phase 4）
+- 记忆压缩、MBTI 描述、Road Map Timeline（Phase 3）
+- 跨周快照 ADR-013（延后到 Phase 3）
 
 **验收标准**
-- `python run.py` 完整执行，自动在浏览器打开 Dashboard
-- Dashboard 显示真实笔记数据的字数图和活跃日历
-- 每日一句卡片显示最近笔记的摘要内容
+- `python run.py --analyze` 生成 dashboard 数据并自动在浏览器打开 Dashboard
+- Dashboard 显示最近笔记列表、五域摘要卡片、tag 候选、每日一句
+- `python run.py --serve` 只启动服务器，无数据时显示空状态提示
+- LLM 失败时 Dashboard 仍可启动并显示 fallback 提示
 
 **阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 3
 
@@ -1139,11 +1148,12 @@ run.py 执行
 
 | 命令 | 行为 |
 |------|------|
-| `python run.py` | 完整执行（处理笔记 + 更新分析 + 打开浏览器） |
-| `python run.py --notes-only` | 只处理新笔记，不更新 dashboard |
-| `python run.py --analyze` | 只更新分析数据和 dashboard |
-| `python run.py --serve` | 只启动本地服务器 |
-| `python run.py --dry-run` | 模拟执行，不写入任何文件（调试用） |
+| `python run.py` | 只处理新笔记 |
+| `python run.py --notes-only` | 同默认，只处理新笔记（保留兼容） |
+| `python run.py --analyze` | 生成 dashboard 数据并启动服务、自动打开浏览器 |
+| `python run.py --serve` | 只启动本地服务器，不生成数据 |
+| `python run.py --dry-run` | 模拟执行：调用 LLM 但不写入任何文件 |
+| `python run.py --analyze --dry-run` | 调用 analyze 相关 LLM 但不写入文件、不启动服务 |
 
 → 完整实现：[Mindraft-Technical.md § 10](Mindraft-Technical.md#10-runpy-实现)
 
