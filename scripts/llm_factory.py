@@ -1,6 +1,7 @@
 from scripts.llm.base import BaseLLM
 from scripts.llm.kimi import KimiLLM
 from scripts.llm.openai import OpenAILLM
+from scripts.llm.deepseek import DeepSeekLLM
 
 
 def get_llm(config: dict) -> BaseLLM:
@@ -11,6 +12,8 @@ def get_llm(config: dict) -> BaseLLM:
             return KimiLLM(config)
         case "openai":
             return OpenAILLM(config)
+        case "deepseek":
+            return DeepSeekLLM(config)
         case "anthropic":
             # 延迟导入 AnthropicLLM，避免未安装 anthropic 包时崩溃
             from scripts.llm.anthropic import AnthropicLLM

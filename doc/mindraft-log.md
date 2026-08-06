@@ -266,7 +266,7 @@ mindraft/
 
 | 类别 | 可选值 |
 |------|--------|
-| LLM 提供者 | `kimi` \| `openai` \| `anthropic` |
+| LLM 提供者 | `kimi` \| `openai` \| `anthropic` \| `deepseek` |
 | 渲染器类型 | `text_card` \| `pixel_art` \| `animated_sprite` \| `game` |
 | 变化量级 | `micro` \| `macro` \| `transformation` |
 | Memory 操作 | `APPEND_TO` \| `SET_IF_NEW`（仅这两种，其余忽略） |

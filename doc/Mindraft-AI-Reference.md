@@ -87,7 +87,7 @@ mindraft/
 ├── config.yml
 ├── run.py
 ├── scripts/
-│   ├── llm/            # base.py + kimi.py + openai.py + anthropic.py
+│   ├── llm/            # base.py + kimi.py + openai.py + anthropic.py + deepseek.py
 │   ├── llm_factory.py
 │   ├── skill_loader.py
 │   ├── process_notes.py
@@ -251,7 +251,9 @@ mindraft/
 | 配置项 | 说明 | 典型值 |
 |--------|------|--------|
 | `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
-| `llm_provider` | 切换 LLM | `kimi \| openai \| anthropic` |
+| `llm_provider` | 切换 LLM | `kimi \| openai \| anthropic \| deepseek` |
+| `llm_model` | 模型名 | `deepseek-v4-flash` |
+| `llm_reasoning_effort` | DeepSeek 思考模式：none 关闭，low/high/max 控制强度 | `none` |
 | `llm_model` | 模型名 | `moonshot-v1-32k` |
 | `api_keys.*` | 环境变量占位 | `${KIMI_API_KEY}` |
 | `memory.active_memory_token_threshold` | 触发压缩阈值 | `1500` |
@@ -278,7 +280,7 @@ mindraft/
 
 | 类别 | 可选值 |
 |------|--------|
-| LLM 提供者 | `kimi \| openai \| anthropic` |
+| LLM 提供者 | `kimi \| openai \| anthropic \| deepseek` |
 | 渲染器类型 | `text_card \| pixel_art \| animated_sprite \| game` |
 | 变化量级 | `micro \| macro \| transformation` |
 | Memory 操作 | `APPEND_TO \| SET_IF_NEW`（仅这两种，其余忽略） |

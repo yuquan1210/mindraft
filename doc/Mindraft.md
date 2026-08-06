@@ -197,7 +197,8 @@ mindraft/
 │   │   ├── base.py
 │   │   ├── kimi.py
 │   │   ├── openai.py
-│   │   └── anthropic.py
+│   │   ├── anthropic.py
+│   │   └── deepseek.py
 │   ├── llm_factory.py
 │   ├── skill_loader.py           # Skill 加载与 prompt 拼装
 │   ├── process_notes.py          # 笔记处理 + 记忆更新
@@ -239,8 +240,8 @@ mindraft/
 | 笔记编写 | Obsidian | 现有工具不变 |
 | 版本存储 | GitHub | 历史追溯，免费 |
 | 处理脚本 | Python 3.11+ | vibe coding 友好，库丰富 |
-| LLM（默认） | Kimi API | 长上下文和中文能力强，OpenAI 兼容接口 |
-| LLM（备选） | OpenAI / Anthropic | 通过 config.yml 一键切换 |
+| LLM（默认） | DeepSeek API | 速度快、成本低，OpenAI 兼容接口 |
+| LLM（备选） | Kimi / OpenAI / Anthropic | 通过 config.yml 一键切换 |
 | 前端 | 原生 HTML + CSS + JS | 零框架，直接上手 |
 | 图表库 | Chart.js（CDN 引入） | 无需安装，一行引入 |
 | 本地服务 | Python `http.server` | 内置模块，无需安装 |
@@ -253,7 +254,7 @@ mindraft/
 | 配置项 | 说明 | 示例值 |
 |--------|------|--------|
 | `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
-| `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic` |
+| `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic \| deepseek` |
 | `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_art \| game` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |
 | `token_estimation` | Token 估算方式 | `char_ratio \| tiktoken` |

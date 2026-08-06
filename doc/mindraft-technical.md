@@ -28,8 +28,11 @@
 notes_vault_path: ~/Developer/GitHub/notes-vault
 
 # LLM 配置（改 llm_provider 这一行切换模型）
-llm_provider: kimi           # kimi | openai | anthropic
-llm_model: moonshot-v1-32k
+llm_provider: deepseek           # kimi | openai | anthropic | deepseek
+llm_model: deepseek-v4-flash
+
+# 思考模式控制（仅 DeepSeek 生效）：none 关闭，low/high/max 控制强度
+llm_reasoning_effort: none
 
 # API Keys（建议用环境变量，此处为占位）
 api_keys:
@@ -37,6 +40,7 @@ api_keys:
   openai:    ${OPENAI_API_KEY}
   anthropic: ${ANTHROPIC_API_KEY}
   replicate: ${REPLICATE_API_KEY}
+  deepseek:  ${DEEPSEEK_API_KEY}
 
 # 记忆压缩阈值（估算 token 数）
 memory:
@@ -160,6 +164,7 @@ class KimiLLM(BaseLLM):
 from scripts.llm.kimi import KimiLLM
 from scripts.llm.openai import OpenAILLM
 from scripts.llm.anthropic import AnthropicLLM
+from scripts.llm.deepseek import DeepSeekLLM
 from scripts.llm.base import BaseLLM
 
 def get_llm(config: dict) -> BaseLLM:
@@ -168,6 +173,7 @@ def get_llm(config: dict) -> BaseLLM:
         case "kimi":       return KimiLLM(config)
         case "openai":     return OpenAILLM(config)
         case "anthropic":  return AnthropicLLM(config)
+        case "deepseek":   return DeepSeekLLM(config)
         case _:            raise ValueError(f"未知的 LLM provider: {provider}")
 ```
 

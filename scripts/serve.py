@@ -29,6 +29,10 @@ def start_server(config: dict, open_browser: bool = False):
     logger.info(f"Dashboard 服务器启动: http://localhost:{port}")
     logger.info(f"服务目录: {dashboard_dir}")
 
+    index_path = dashboard_dir / "index.html"
+    if not index_path.exists():
+        logger.warning(f"{index_path} 不存在，浏览器将显示目录列表而非 Dashboard 页面")
+
     if open_browser:
         url = f"http://localhost:{port}"
         logger.info(f"正在打开浏览器: {url}")

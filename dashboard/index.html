@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mindraft Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="site-header">
+            <h1 id="dashboard-title">Mindraft</h1>
+            <p class="last-updated" id="last-updated">加载中…</p>
+        </header>
+
+        <main id="main-content">
+            <section id="empty-state" class="empty-state hidden">
+                <h2>还没有生成 dashboard 数据</h2>
+                <p>请先运行：<code>python run.py --analyze</code></p>
+            </section>
+
+            <section id="fallback-banner" class="fallback-banner hidden">
+                今日洞察生成失败，请稍后重试。
+            </section>
+
+            <section id="daily-insight-section" class="card hidden">
+                <h2>每日一句</h2>
+                <p id="daily-insight-text" class="insight-text"></p>
+            </section>
+
+            <section id="domain-summaries" class="domain-grid">
+                <!-- 五域卡片由 JS 填充 -->
+            </section>
+
+            <section class="two-column">
+                <section id="tag-candidates-section" class="card hidden">
+                    <h2>Tag 候选</h2>
+                    <ul id="tag-candidates-list" class="tag-list"></ul>
+                </section>
+
+                <section id="recent-notes-section" class="card hidden">
+                    <h2>最近笔记</h2>
+                    <ul id="recent-notes-list" class="note-list"></ul>
+                </section>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
