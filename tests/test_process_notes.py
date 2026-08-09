@@ -22,7 +22,8 @@ class FakeLLM:
 
 DEFAULT_FAKE_RESPONSE = {
     "title": "Productive Friday",
-    "category": "work/daily",
+    "domain": "work",
+    "subcategory": "daily",
     "tags": ["auth-system", "refactoring"],
     "summary": "Refactored the login module",
     "rewritten_content": "# Productive Friday\n\nToday I refactored the login module.",
@@ -132,7 +133,7 @@ def test_failed_note_not_marked_processed_and_retries():
         def fake_chat_json(system, user):
             if "good.md" in user:
                 return DEFAULT_FAKE_RESPONSE
-            return {"title": "Bad", "category": "invalid/category"}
+            return {"title": "Bad", "domain": "invalid", "subcategory": "daily"}
 
         fake_llm = FakeLLM(DEFAULT_FAKE_RESPONSE)
         fake_llm.chat_json = fake_chat_json
@@ -146,9 +147,36 @@ def test_failed_note_not_marked_processed_and_retries():
         assert "bad.md" not in memory["meta"]["processed_notes"]
 
 
+def test_transient_failure_recovers_on_retry():
+    """首次调用失败（如 JSON 解析异常），重试成功后笔记应正常处理。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        vault = Path(tmp)
+        config = _make_config(vault)
+        _write_raw_note(vault, "flaky.md", "Today I refactored the login module.")
+
+        call_count = {"n": 0}
+
+        def flaky_chat_json(system, user):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise ValueError("Invalid control character at: line 6 column 40")
+            return DEFAULT_FAKE_RESPONSE
+
+        fake_llm = FakeLLM(DEFAULT_FAKE_RESPONSE)
+        fake_llm.chat_json = flaky_chat_json
+
+        with patch("scripts.process_notes.get_llm", return_value=fake_llm):
+            process_new_notes(config, dry_run=False)
+
+        assert call_count["n"] == 2, f"expected 1 retry, got {call_count['n']} calls"
+        memory = json.loads((vault / "analysis" / "memory.json").read_text(encoding="utf-8"))
+        assert "flaky.md" in memory["meta"]["processed_notes"]
+
+
 if __name__ == "__main__":
     test_process_single_note_writes_ai_note_and_memory()
     test_dry_run_does_not_write_files()
     test_skipped_note_marked_processed()
     test_failed_note_not_marked_processed_and_retries()
+    test_transient_failure_recovers_on_retry()
     print("\n所有 process_notes 测试通过。")

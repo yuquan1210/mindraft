@@ -24,7 +24,7 @@ NOTE_PROCESSOR_ROLE = """你是 Mindraft 笔记处理助手。
 - life.places（字符串列表）
 - life.important_people（字符串列表）
 - life.recurring_signals（字符串列表）
-- life.recent_mood_trend（字符串列表）
+- life.recent_mood_trend（字符串）
 - growth.learning_topics（字符串列表）
 - growth.active_skills（字符串列表）
 - growth.challenges（字符串列表）
@@ -51,7 +51,8 @@ NOTE_PROCESSOR_ROLE = """你是 Mindraft 笔记处理助手。
 
 {
   "title": "简短英文标题，用于文件名，全小写连字符分隔，如 productive-friday",
-  "category": "work/daily 或 life/cooking 等，必须以 work/ / life/ / growth/ / wellbeing/ / identity/ 开头",
+  "domain": "五选一：work / life / growth / wellbeing / identity",
+  "subcategory": "小写英文子分类，如 daily / coding / cooking",
   "tags": ["最多3个英文小写连字符标签，如 auth-system"],
   "summary": "20字以内的一句话摘要",
   "rewritten_content": "重写后的标准 markdown 内容",
@@ -60,7 +61,12 @@ NOTE_PROCESSOR_ROLE = """你是 Mindraft 笔记处理助手。
     {"action": "APPEND_TO", "path": "work.ongoing_projects", "value": "认证系统重构"},
     {"action": "SET_IF_NEW", "path": "work.current_focus", "value": "登录模块重构"}
   ]
-}"""
+}
+
+## 输出硬约束
+
+- 只输出上述 JSON 对象，禁止输出任何额外文字或 markdown 代码块包裹
+- 字符串值内的换行必须写成 \\n 转义序列，禁止原始换行符、制表符等控制字符"""
 
 COMPRESSOR_ROLE = """你是 Mindraft 记忆压缩助手。
 你的任务是精简 active_memory 的表达，同时保留所有独特的观察和信号。

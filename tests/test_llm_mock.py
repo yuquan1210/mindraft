@@ -5,8 +5,15 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from scripts.llm.base import BaseLLM
 from scripts.llm_factory import get_llm
 from scripts.utils import load_config
+
+# 0. 验证 extract_json 能容忍字符串值内未转义的控制字符（低思考模式常见缺陷）
+raw_control_char_json = '{"title": "Test", "rewritten_content": "line1\nline2"}'
+parsed = BaseLLM.extract_json(raw_control_char_json)
+assert parsed["rewritten_content"] == "line1\nline2", f"意外解析结果: {parsed}"
+print("[extract_json] ✓ 容忍字符串内控制字符")
 
 
 class FakeOpenAIClient:
@@ -34,8 +41,9 @@ class FakeOpenAIClient:
 config = load_config()
 print(f"[config] provider={config['llm_provider']}, model={config['llm_model']}")
 
-# 2. 使用 Mock 验证 KimiLLM.chat 返回文本
-with patch("scripts.llm.kimi.OpenAI") as mock_openai:
+# 2. 使用 Mock 验证 chat 返回文本（patch 当前 provider 对应的 OpenAI 客户端）
+openai_target = f"scripts.llm.{config['llm_provider']}.OpenAI"
+with patch(openai_target) as mock_openai:
     mock_client = FakeOpenAIClient("模拟的 LLM 文本响应")
     mock_openai.return_value = mock_client
     llm = get_llm(config)
@@ -50,7 +58,7 @@ with patch("scripts.llm.kimi.OpenAI") as mock_openai:
 json_payload = {"greeting": "你好", "language": "中文"}
 markdown_wrapped = f"```json\n{json.dumps(json_payload, ensure_ascii=False)}\n```"
 
-with patch("scripts.llm.kimi.OpenAI") as mock_openai:
+with patch(openai_target) as mock_openai:
     mock_client = FakeOpenAIClient(markdown_wrapped)
     mock_openai.return_value = mock_client
     llm = get_llm(config)

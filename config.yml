@@ -36,6 +36,8 @@ skills:
     enabled: true
   memory_compression:
     enabled: true
+  json_output:
+    enabled: true
 
 # 笔记预筛选
 note_filter:

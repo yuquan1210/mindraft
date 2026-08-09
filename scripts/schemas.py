@@ -3,12 +3,17 @@ from jsonschema import validate, ValidationError
 # process_note 操作的 LLM 返回结构
 PROCESS_NOTE_SCHEMA = {
     "type": "object",
-    "required": ["title", "category", "tags", "summary", "rewritten_content", "memory_updates"],
+    "required": ["title", "domain", "subcategory", "tags", "summary", "rewritten_content", "memory_updates"],
     "properties": {
         "title": {"type": "string", "minLength": 1, "maxLength": 80},
-        "category": {
+        "domain": {
             "type": "string",
-            "pattern": "^(work|life|growth|wellbeing|identity)/",
+            "enum": ["work", "life", "growth", "wellbeing", "identity"],
+        },
+        "subcategory": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 40,
         },
         "tags": {
             "type": "array",

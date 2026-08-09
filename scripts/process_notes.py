@@ -123,10 +123,7 @@ def process_new_notes(config: dict, dry_run: bool = False):
         # Phase 1 每组只有一篇笔记
         note = group[0]
         try:
-            result = process_single_note(note, memory, llm, config)
-            is_valid, error = validate_llm_output(result, PROCESS_NOTE_SCHEMA)
-            if not is_valid:
-                raise ValueError(error)
+            result = _call_with_retry(note, memory, llm, config)
 
             if dry_run:
                 logger.info(f"[DRY-RUN] 将处理 {note['name']} → {result['category']}")
@@ -144,7 +141,7 @@ def process_new_notes(config: dict, dry_run: bool = False):
             safe_write_json(str(memory_path), memory)
             logger.info(f"✓ 已处理 {note['name']} → {result['category']}")
         except Exception as e:
-            logger.error(f"处理笔记 {note['name']} 失败：{e}")
+            logger.error(f"处理笔记 {note['name']} 失败：{_friendly_error(e)}（已跳过该笔记，下次运行时会重新处理）")
             continue
 
 
@@ -162,6 +159,35 @@ def process_single_note(note: dict, memory: dict, llm, config: dict) -> dict:
     return llm.chat_json(system=system, user=user_content)
 
 
+def _call_with_retry(note: dict, memory: dict, llm, config: dict) -> dict:
+    """调用 LLM 处理单篇笔记并校验返回，失败时重试一次。"""
+    last_error = None
+    for attempt in range(2):
+        try:
+            result = process_single_note(note, memory, llm, config)
+            is_valid, error = validate_llm_output(result, PROCESS_NOTE_SCHEMA)
+            if not is_valid:
+                raise ValueError(error)
+            # LLM 返回 domain + subcategory，join 为 category 供下游使用
+            result["category"] = f"{result['domain']}/{result['subcategory']}"
+            return result
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                logger.warning(f"笔记 {note['name']} 首次处理失败（{_friendly_error(e)}），自动重试一次")
+    raise last_error
+
+
+def _friendly_error(e: Exception) -> str:
+    """将底层异常翻译成易读的中文说明。"""
+    msg = str(e)
+    if isinstance(e, json.JSONDecodeError) or "Invalid control character" in msg or "Expecting" in msg:
+        return f"LLM 返回的内容不是合法 JSON（{msg}）"
+    if msg.startswith("Schema validation failed"):
+        return f"LLM 返回的字段不符合格式要求（{msg}）"
+    return msg
+
+
 def apply_memory_updates(active_memory: dict, updates: list):
     """应用 LLM 返回的记忆更新指令。"""
     for update in updates:
@@ -172,7 +198,10 @@ def apply_memory_updates(active_memory: dict, updates: list):
         if action == "APPEND_TO":
             target = get_nested(active_memory, path)
             if not isinstance(target, list):
-                logger.warning(f"memory_updates APPEND_TO 目标不是列表：{path}")
+                logger.warning(
+                    f"已忽略一条记忆更新：APPEND_TO 目标 {path} 在 active_memory 中不存在或不是列表"
+                    f"（LLM 可能自创了路径或写错域前缀）"
+                )
                 continue
             if isinstance(value, str) and is_semantically_duplicate(value, target):
                 continue
@@ -186,7 +215,7 @@ def apply_memory_updates(active_memory: dict, updates: list):
                 if not current:
                     set_nested(active_memory, path, value)
         else:
-            logger.warning(f"memory_updates 遇到非法 action：{action}，已忽略")
+            logger.warning(f"已忽略一条记忆更新：action={action} 非法（只允许 APPEND_TO / SET_IF_NEW）")
 
 
 def write_ai_note(vault: Path, raw_name: str, result: dict):
@@ -228,7 +257,7 @@ def update_tag_candidates(memory: dict, tags: list):
     tag_pattern = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
     for tag in tags:
         if not tag_pattern.match(tag):
-            logger.warning(f"tag 格式非法，跳过：{tag}")
+            logger.warning(f"已忽略候选 tag {tag}：格式非法（要求英文小写连字符，如 system-design）")
             continue
         if tag not in candidates:
             candidates[tag] = {"count": 0, "status": "pending"}
