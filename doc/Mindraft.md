@@ -2,7 +2,7 @@
 ## 产品方案文档 v2.0
 
 > 最后更新：2026-06-19  
-> 相关文档：[技术参考](Mindraft-Technical.md) · [实现日志](Mindraft-Log.md)
+> 相关文档：[实现日志](Mindraft-Log.md) · Agent 入口：[../AGENTS.md](../AGENTS.md)
 
 ---
 
@@ -190,7 +190,8 @@ mindraft/
 │   ├── summary_style.yml
 │   ├── tagging.yml
 │   ├── analysis_style.yml
-│   └── memory_compression.yml
+│   ├── memory_compression.yml
+│   └── json_output.yml
 │
 ├── scripts/
 │   ├── llm/                      # LLM 抽象层
@@ -262,7 +263,7 @@ mindraft/
 | `note_filter.batch_char_threshold` | 短笔记合并阈值 | `200` |
 | `logging.level` | 日志级别 | `INFO` |
 
-→ 完整配置示例：[Mindraft-Technical.md § 1](Mindraft-Technical.md#1-配置文件-configyml)
+→ 完整配置示例：`config.yml`
 
 ---
 
@@ -280,7 +281,7 @@ scripts/llm/
 └── anthropic.py     # Claude 实现
 ```
 
-→ 实现代码：[Mindraft-Technical.md § 2](Mindraft-Technical.md#2-llm-抽象层)
+→ 实现代码：`scripts/llm/` 与 `scripts/llm_factory.py`
 
 ---
 
@@ -301,13 +302,13 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 
 每个 skill YAML 文件声明名称、适用操作（`applies_to`）、和规则列表（`rules`）。`skill_loader.py` 根据当前 operation 自动找出并挂载适用的 skill。
 
-→ 所有 skill 文件示例：[Mindraft-Technical.md § 3](Mindraft-Technical.md#3-skill-配置文件)
+→ 所有 skill 文件示例：`skills/`
 
 #### Skill 与操作的对应关系
 
 | 操作 | 挂载的 Skill |
 |------|-------------|
-| `process_note` | `note_style` + `tagging` |
+| `process_note` | `note_style` + `tagging` + `json_output` |
 | `enrich_with_link` | `note_style` |
 | `generate_daily_summary` | `summary_style` |
 | `generate_profile` | `analysis_style` |
@@ -315,7 +316,7 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 | `generate_avatar_data` | `analysis_style` |
 | `compress_memory` | `memory_compression` |
 
-→ 实现代码：[Mindraft-Technical.md § 4](Mindraft-Technical.md#4-skill_loaderpy)
+→ 实现代码：`scripts/skill_loader.py`
 
 ---
 
@@ -349,9 +350,10 @@ run.py
               ├── 3. 调用 LLM：active_memory + 笔记原文
               ├── 4. JSON Schema 校验 LLM 返回结果
               ├── 5. 解析 JSON 返回：
-              │       category, tags, summary,
+              │       domain + subcategory（join 为 category）,
+              │       tags, summary,
               │       rewritten_content, questions,
-              │       related_notes, memory_updates
+              │       memory_updates
               │
               ├── 6. 写入 ai_notes/{category}/{filename}.md
               ├── 7. apply_memory_updates() → 更新 active_memory
@@ -535,13 +537,11 @@ LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE
 > 如果新笔记与已有记忆存在矛盾，用 APPEND_TO 追加新信号，而不是覆盖旧信号。
 > 矛盾本身也是有价值的历史信息。
 
-→ 实现代码：[Mindraft-Technical.md § 5](Mindraft-Technical.md#5-笔记处理)
+→ 实现代码：`scripts/process_notes.py`、`scripts/note_filter.py`、`scripts/schemas.py`、`scripts/prompts.py`
 
 #### 压缩触发与执行
 
 压缩分三步：① 将 active_memory 完整归档至 history_archive（永久保留）→ ② 调用 LLM 压缩（精简表达，不丢信号）→ ③ 热层 token 降回 ~600。
-
-→ 实现代码：[Mindraft-Technical.md § 6](Mindraft-Technical.md#6-记忆系统)
 
 #### 各阶段记忆状态预估
 
@@ -667,8 +667,6 @@ Transformation（稀有，标志性人生转变）
 | `macro` | memory_delta 涉及：`ongoing_projects`、`current_routines`、`interests_observed` |
 | `micro` | 其他任何情况（默认） |
 
-→ 实现代码：[Mindraft-Technical.md § 7](Mindraft-Technical.md#7-用户形象系统)
-
 ---
 
 #### Avatar Data 契约
@@ -767,7 +765,7 @@ Transformation（稀有，标志性人生转变）
 
 所有渲染器继承 `BaseAvatarRenderer`，实现 `render()` 方法。切换渲染器只需改 `config.yml` 一行，无需修改业务代码。
 
-→ 所有渲染器实现：[Mindraft-Technical.md § 8](Mindraft-Technical.md#8-dashboard-前端)
+→ 所有渲染器实现：`dashboard/`
 
 ---
 
@@ -875,7 +873,7 @@ Phase 3（game）：     整个区域替换为可交互的内嵌游戏场景
 | `--text-secondary` | `#666666` | 次要文字 |
 | `--success` | `#4ade80` | 有笔记标记 |
 
-→ CSS 完整代码：[Mindraft-Technical.md § 11](Mindraft-Technical.md#11-ui-样式)
+→ CSS 完整代码：`dashboard/style.css`
 
 ### 字体
 
@@ -913,12 +911,11 @@ run.py 执行
     │     ├── LLM 调用（active_memory + 笔记原文）
     │     ├── JSON Schema 校验返回结果
     │     ├── 解析返回的结构化 JSON
-    │     │     ├── category        → 确定写入 ai_notes 的路径
+    │     │     ├── domain + subcategory → join 为 category，确定写入 ai_notes 的路径
     │     │     ├── tags            → 更新 tag_candidates
     │     │     ├── summary         → 写入 frontmatter
     │     │     ├── rewritten_content → 写入笔记正文（重写版本）
     │     │     ├── questions       → 以注释嵌入笔记，要求作者补充
-    │     │     ├── related_notes   → 更新 relationships.json
     │     │     └── memory_updates  → apply_memory_updates()
     │     │
     │     ├── 写入 ai_notes/{category}/{filename}.md
@@ -1156,9 +1153,9 @@ run.py 执行
 | `python run.py --dry-run` | 模拟执行：调用 LLM 但不写入任何文件 |
 | `python run.py --analyze --dry-run` | 调用 analyze 相关 LLM 但不写入文件、不启动服务 |
 
-→ 完整实现：[Mindraft-Technical.md § 10](Mindraft-Technical.md#10-runpy-实现)
+→ 完整实现：`run.py`
 
 ---
 
 *产品名称：Mindraft | 文档版本：v2.0 | 最后更新：2026-06-19*  
-*相关文档：[Mindraft-Technical.md](Mindraft-Technical.md) · [Mindraft-Log.md](Mindraft-Log.md)*
+*相关文档：[Mindraft-Log.md](Mindraft-Log.md) · [../AGENTS.md](../AGENTS.md)*

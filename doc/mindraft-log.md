@@ -1,15 +1,15 @@
 # Mindraft — 实现日志
 
 > 供 AI Agent 恢复上下文使用。每次实现中断前更新此文档，每次继续实现时先读取此文档。
-> 产品文档：[# Mindraft.md](# Mindraft.md) · 技术参考：[Mindraft-Technical.md](Mindraft-Technical.md)
+> 产品文档：[Mindraft.md](Mindraft.md) · Agent 入口：[../AGENTS.md](../AGENTS.md)
 
 ---
 
 ## 项目状态
 
-**当前阶段**：Phase 1 ✅ 已完成 → Phase 2 ⬜ 未开始
+**当前阶段**：Phase 2 ✅ 已完成 → Phase 3 ⬜ 未开始
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-07-26
+**最后更新**：2026-08-08
 
 ---
 
@@ -164,7 +164,7 @@
 |------|------|---------|---------|
 | Phase 0：基础骨架 | ✅ 已完成 | 2026-07-25 | `.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
 | Phase 1：笔记处理核心 | ✅ 已完成 | 2026-07-26 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
-| Phase 2：Dashboard MVP | ⬜ 未开始 | — | `analyze.py`、Dashboard HTML/JS、`serve.py` |
+| Phase 2：Dashboard MVP | ✅ 已完成 | 2026-08-05 | `analyze.py`、Dashboard HTML/JS、`serve.py` |
 | Phase 3：记忆系统完善 | ⬜ 未开始 | — | 记忆压缩、MBTI 描述、Road Map |
 | Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
 | Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
@@ -444,3 +444,34 @@ mindraft/
 4. ✅ 数据文件路径与 schema 已确认
 5. ✅ ADR-013 跨周快照延后到 Phase 3 已确认
 
+
+---
+
+### LLM 输出健壮性修复汇总（2026-08-08）
+
+**背景**
+`llm_reasoning_effort: none`（DeepSeek 关闭思考模式）时，`run.py` 处理 21 篇笔记出现 7 个 ERROR（6 个 JSON 控制字符解析失败、1 个 category schema 校验失败）和若干 memory_updates WARNING；`high` 时错误明显减少。
+
+**完成内容**
+1. `category` 字段拆分：LLM 返回从单字段 `category`（`域/子分类` 拼接字符串）改为 `domain`（enum 五选一）+ `subcategory`（slug 正则）两个独立字段，校验通过后由 `process_notes.py` join 回 `category`，下游目录结构、frontmatter、dashboard 统计格式不变。同步更新 `scripts/schemas.py`、`scripts/prompts.py`、`scripts/process_notes.py`、`tests/test_process_notes.py`。
+2. 新增 `skills/json_output.yml`：JSON 输出硬约束（只输出合法 JSON、字符串内禁止原始换行/制表符、APPEND_TO 仅限列表路径、memory_updates path 禁止自创/换域前缀），并在 `config.yml` 注册开关。
+3. 修复 `scripts/prompts.py` 与 `create_initial_memory()` 的不一致：`life.recent_mood_trend` 标注从「字符串列表」改为「字符串」；`NOTE_PROCESSOR_ROLE` 追加「输出硬约束」小节。
+4. `scripts/llm/base.py` `extract_json()`：解析失败时用 `json.loads(cleaned, strict=False)` 重试，容忍字符串值内未转义的控制字符。
+5. `scripts/process_notes.py` 新增 `_call_with_retry()`：单篇失败自动重试一次，仍失败才记 ERROR 跳过。
+6. 日志可读性：新增 `_friendly_error()` 将底层异常翻译为中文说明（如 `LLM 返回的内容不是合法 JSON`），所有 warning/error 注明系统处理方式（已忽略 / 已跳过 / 自动重试）。
+7. 修复 `tests/test_llm_mock.py` 既有 bug：mock 写死 patch `scripts.llm.kimi.OpenAI`，与当前 provider（deepseek）不匹配导致真实 API 调用 401；改为按 `config['llm_provider']` 动态 patch。
+8. 文档同步：`doc/mindraft-technical.md`（config 开关、extract_json、json_output skill、NOTE_PROCESSOR_ROLE、PROCESS_NOTE_SCHEMA、重试与日志说明）、`doc/Mindraft.md`（skills 目录树、skill 挂载表、处理流程字段解析）、`doc/Mindraft-AI-Reference.md`（校验失败语义）。
+
+**验证结果**
+- `tests/test_process_notes.py` 5 个测试全过（含新增的 transient 失败重试恢复用例）。
+- `tests/test_llm_mock.py` 全过（含新增的 extract_json 控制字符容忍用例）。
+- `python run.py --dry-run` 正常走完。
+- 真实运行 `python run.py`（21 篇笔记，`llm_reasoning_effort: none` 下对比）：0 ERROR，仅剩 2 条 memory_updates WARNING（LLM 自创路径 / 写错域前缀，已忽略），随后通过 json_output skill 补充路径约束。
+
+**主要决策**
+- category 不放宽 schema，而是拆字段让模型免于拼接格式字符串；enum 是最强约束。
+- 三层防御：skill/prompt 强约束（降低犯错概率）→ `strict=False` 容错（修复控制字符）→ 重试一次（吸收偶发失误）。
+- 失败的笔记不标记为已处理，下次运行自动重试，语义保持不变。
+
+**遇到的问题**
+- 验证期间 DeepSeek API key 失效（401），真实 LLM 对比验证在 key 更新后完成。
