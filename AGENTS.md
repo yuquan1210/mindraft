@@ -25,7 +25,7 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 ```
 mindraft/
 ├── config.yml            # 主配置（LLM provider、skill 开关、记忆阈值等）
-├── run.py                # 入口：--notes-only / --analyze / --serve / --dry-run
+├── run.py                # 入口：默认完整流程（笔记 + dashboard 数据 + 起服务）；--analyze / --dashboard / --rebuild / --dry-run
 ├── scripts/
 │   ├── llm/              # base.py + kimi/openai/anthropic/deepseek
 │   ├── llm_factory.py    # 按 config.llm_provider 返回 BaseLLM 实例
@@ -48,10 +48,11 @@ mindraft/
 
 ```bash
 pip install -r requirements.txt   # 安装依赖（可选：anthropic、tiktoken）
-python run.py --dry-run           # 干跑：调 LLM 但不写文件
-python run.py --notes-only        # 只处理新笔记
-python run.py --analyze           # 只生成 dashboard 数据并起服务
-python run.py --serve             # 只起 dashboard 服务
+python run.py                     # 完整流程：处理新笔记 → 生成 dashboard 数据 → 启动服务并打开浏览器
+python run.py --analyze           # 只做 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务
+python run.py --dashboard         # 只启动 dashboard 服务并打开浏览器，不做任何分析
+python run.py --rebuild           # 清空全部分析结果（ai_notes/、memory.json、dashboard 数据、process_log）后走完整流程
+python run.py --dry-run           # 干跑：调 LLM 但不写文件、不启动服务
 python -m pytest tests/           # 测试（test_llm_real.py 需要真实 API key）
 ```
 

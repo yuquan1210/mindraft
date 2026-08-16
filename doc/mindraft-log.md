@@ -475,3 +475,64 @@ mindraft/
 
 **遇到的问题**
 - 验证期间 DeepSeek API key 失效（401），真实 LLM 对比验证在 key 更新后完成。
+
+
+---
+
+### 移除 `--notes-only` 参数（2026-08-13）
+
+**背景**
+`python run.py --notes-only` 与无参数的默认行为完全等价（都是 `process_new_notes()` 只处理新笔记），属于冗余 flag。
+
+**完成内容**
+1. `run.py`：删除 `--notes-only` 参数及其分支，默认行为不变（只处理新笔记）。
+2. 文档同步：`AGENTS.md`（目录说明 + 常用命令补充 `python run.py` 默认行为解释）、`doc/Mindraft.md`（§10 命令表、Phase 1 验收标准）、`.kimi-code/skills/mindraft-test-runner/SKILL.md`。
+
+**主要决策**
+- 无参数的 `python run.py` 即"只处理新笔记"，语义由 `memory.json → meta.processed_notes` 保证：已处理的跳过，上次失败未登记的重试。
+
+
+---
+
+### run.py 命令语义重设计（2026-08-13）
+
+**背景**
+旧命令语义不直观：默认只处理笔记，`--analyze` 反而生成 dashboard 数据并启动服务，`--serve` 只启动服务且不打开浏览器。Dashboard 是用户每天查看分析结果的主要入口，命令设计应围绕完整流程展开。
+
+**完成内容**
+1. `run.py` 三个命令重新设计：
+   - `python run.py`：完整流程（处理新笔记 → 生成 dashboard 数据 → 启动服务并打开浏览器）。
+   - `python run.py --analyze`：全部 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务。
+   - `python run.py --dashboard`：只启动服务并打开浏览器（取代 `--serve`，且改为自动打开浏览器）。
+   - `--dry-run`：对全部 AI 步骤（笔记处理 + analyze）干跑，不写文件、不启动服务。
+2. 服务启动移到进程锁之外：AI 工作在锁内完成后释放锁再启动服务，避免默认命令在服务运行期间长期占用 `.mindraft.lock`（旧 `--analyze` 在锁内启动服务）。
+3. 移除 `--serve` 参数；不保留"只处理笔记"入口（dashboard 每天使用，analyze 的 LLM 成本可接受）。
+4. 文档同步：`AGENTS.md`（目录说明 + 常用命令）、`doc/Mindraft.md`（§10 命令表、Phase 2 实现内容与验收标准）、`.kimi-code/skills/mindraft-test-runner/SKILL.md`（默认验证命令改为 `--analyze`，注明无参命令会阻塞）。
+
+**主要决策**
+- 默认命令 = 完整流程并打开 dashboard，因为 dashboard 是日常主要查看入口。
+- `--analyze` 语义从"只生成 dashboard 数据"改为"全部 AI 分析"，命令按「做多少工作」分层：dashboard（无 AI）< analyze（全部 AI）< 默认（全部 AI + 服务）。
+
+
+---
+
+### 新增 `--rebuild` 参数（2026-08-16）
+
+**背景**
+需要一个「清空本地全部分析结果，从头重新分析」的入口（例如 prompt/skill 调整后想整体重建）。flag 命名讨论后选定 `--rebuild`：`--refresh` 暗示增量更新，`--new` 语义含糊，`--reset` 只表达清空不表达重建。
+
+**完成内容**
+1. `scripts/utils.py` 新增 `reset_analysis_state(config)`：删除 `{vault}/analysis/memory.json`、`process_log.jsonl`（按 `config.logging.file` 定位）、`{vault}/ai_notes/` 整个目录、`dashboard/data/*.json`；`raw_notes/` 与 `.mindraft.lock` 不动。返回已删除路径列表。
+2. `run.py` 新增 `--rebuild`：先清空再落入正常流程——`--rebuild` 走完整流程（处理全部笔记 → 生成 dashboard 数据 → 启动服务），`--rebuild --analyze` 只重建不启动服务。与 `--dry-run`、`--dashboard` 互斥（`parser.error`）。
+3. 清空必须先于 `setup_logging()` 调用：日志文件句柄一旦打开，删除 `process_log.jsonl` 后新日志会写入已删除的 inode（`run.py` 中有注释）。
+4. `process_log.jsonl` 按用户决定直接删除，不归档；`memory.json` 不做备份（可由 raw_notes 完全重建）。
+5. 文档同步：`AGENTS.md`（目录说明 + 常用命令）、`doc/Mindraft.md`（§10 命令表）。
+
+**主要决策**
+- 「记忆只增不减」原则针对的是 LLM `memory_updates` 的增量语义；`--rebuild` 是用户显式发起的整体重建，memory 是从 raw_notes 派生的可再生产物，二者不冲突。
+- 重建后靠 `process_new_notes` 对缺失 `memory.json` 自动创建初始结构来恢复，无需额外初始化逻辑。
+
+**验证结果**
+- 临时 vault 单测 `reset_analysis_state`：四类产物全部删除、二次调用返回空列表。
+- `pytest` 5 个测试全过；`python run.py --help` 输出新参数。
+- 测试期间误删了真实 `dashboard/data/*.json`（reset 函数硬编码项目内 dashboard 目录），已通过 `python run.py --analyze` 重新生成恢复。

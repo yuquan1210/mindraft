@@ -1015,7 +1015,7 @@ run.py 执行
 - `apply_memory_updates()`：处理 LLM 返回的记忆更新指令
 
 **验收标准**
-- `python run.py --notes-only` 成功处理 raw_notes 中的笔记
+- `python run.py` 成功处理 raw_notes 中的笔记
 - ai_notes/ 目录中出现分类后的 markdown 文件，frontmatter 格式正确
 - memory.json 中 `active_memory` 有更新，`processed_notes` 记录了已处理笔记
 
@@ -1035,7 +1035,7 @@ run.py 执行
 - `tag_candidates` 列表
 - 每日一句洞察卡片（带叙事色彩，基于 `active_memory`）
 - `serve.py`：启动本地 HTTP 服务器，并自动打开浏览器
-- `run.py` 命令语义调整：默认只处理笔记，`--analyze` 生成数据并启动服务
+- `run.py` 命令语义：默认完整流程（处理笔记 → 生成数据 → 启动服务），`--analyze` 只做 AI 分析，`--dashboard` 只启动服务
 
 **不做内容**
 - Chart.js 字数趋势图、CSS Grid 活跃日历（延后到 Phase 3/5）
@@ -1044,9 +1044,9 @@ run.py 执行
 - 跨周快照 ADR-013（延后到 Phase 3）
 
 **验收标准**
-- `python run.py --analyze` 生成 dashboard 数据并自动在浏览器打开 Dashboard
+- `python run.py` 走完整流程：处理笔记、生成 dashboard 数据并自动在浏览器打开 Dashboard
 - Dashboard 显示最近笔记列表、五域摘要卡片、tag 候选、每日一句
-- `python run.py --serve` 只启动服务器，无数据时显示空状态提示
+- `python run.py --dashboard` 只启动服务器并打开浏览器，无数据时显示空状态提示
 - LLM 失败时 Dashboard 仍可启动并显示 fallback 提示
 
 **阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 3
@@ -1146,12 +1146,11 @@ run.py 执行
 
 | 命令 | 行为 |
 |------|------|
-| `python run.py` | 只处理新笔记 |
-| `python run.py --notes-only` | 同默认，只处理新笔记（保留兼容） |
-| `python run.py --analyze` | 生成 dashboard 数据并启动服务、自动打开浏览器 |
-| `python run.py --serve` | 只启动本地服务器，不生成数据 |
-| `python run.py --dry-run` | 模拟执行：调用 LLM 但不写入任何文件 |
-| `python run.py --analyze --dry-run` | 调用 analyze 相关 LLM 但不写入文件、不启动服务 |
+| `python run.py` | 完整流程：处理新笔记（已处理的跳过，上次失败的重试）→ 生成 dashboard 数据 → 启动服务并自动打开浏览器 |
+| `python run.py --analyze` | 执行全部 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务 |
+| `python run.py --dashboard` | 只启动本地服务器并自动打开浏览器，不做任何分析 |
+| `python run.py --rebuild` | 清空全部分析结果（`ai_notes/`、`memory.json`、`dashboard/data/*.json`、`process_log.jsonl`），从头重新分析并走完整流程；`--rebuild --analyze` 则只重建不启动服务 |
+| `python run.py --dry-run` | 干跑：调用全部 LLM（笔记处理 + analyze）但不写入任何文件、不启动服务 |
 
 → 完整实现：`run.py`
 

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -128,6 +129,41 @@ def get_process_lock(notes_vault_path: str) -> FileLock:
     lock_path = Path(notes_vault_path) / "analysis" / ".mindraft.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     return FileLock(str(lock_path), timeout=10)
+
+
+# ── 状态重置 ──────────────────────────────────────────
+def reset_analysis_state(config: dict) -> list[str]:
+    """
+    清空全部分析产物（--rebuild 用），返回已删除的路径列表：
+    - {vault}/analysis/memory.json
+    - {vault}/analysis/process_log.jsonl（按 config.logging.file 定位）
+    - {vault}/ai_notes/ 整个目录
+    - dashboard/data/*.json
+    raw_notes/ 与 .mindraft.lock 不动。
+    注意：必须在 setup_logging() 之前调用，否则日志文件句柄已打开，
+    删除后新日志会写入已删除的 inode。
+    """
+    vault = Path(config["notes_vault_path"]).expanduser()
+    removed = []
+
+    log_file = vault / config.get("logging", {}).get("file", "analysis/process_log.jsonl")
+    for path in [vault / "analysis" / "memory.json", log_file]:
+        if path.exists():
+            path.unlink()
+            removed.append(str(path))
+
+    ai_notes_dir = vault / "ai_notes"
+    if ai_notes_dir.exists():
+        shutil.rmtree(ai_notes_dir)
+        removed.append(str(ai_notes_dir))
+
+    dashboard_data_dir = Path(__file__).parent.parent / "dashboard" / "data"
+    if dashboard_data_dir.exists():
+        for json_file in dashboard_data_dir.glob("*.json"):
+            json_file.unlink()
+            removed.append(str(json_file))
+
+    return removed
 
 
 # ── 日志初始化 ──────────────────────────────────────────

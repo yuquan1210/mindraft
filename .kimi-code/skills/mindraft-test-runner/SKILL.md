@@ -17,7 +17,7 @@ description: |
 ## 预期输入
 
 - 当前工作目录应是 Mindraft 项目根目录（包含 `run.py` 和 `config.yml`）。
-- 用户可指定运行哪些命令；未指定时，默认运行 `python run.py --dry-run` 和 `python run.py --notes-only`（如果 `raw_notes/` 存在且有有效笔记）。
+- 用户可指定运行哪些命令；未指定时，默认运行 `python run.py --dry-run` 和 `python run.py --analyze`（如果 `raw_notes/` 存在且有有效笔记）。注意：无参数的 `python run.py` 走完整流程，最后会启动服务并阻塞，验证场景应使用 `--analyze` 代替。
 
 ## 工作流程
 
@@ -32,8 +32,8 @@ description: |
 
 3. **执行默认命令**
    - 始终运行：`python run.py --dry-run`（如果 `python` 不可用，尝试 `python3 run.py --dry-run`）
-   - 可选（默认启用）：`python run.py --notes-only`（同上，自动回退到 `python3`）
-   - 用户可要求追加：`--analyze`, `--serve`, 或完整 `python run.py`。
+   - 可选（默认启用）：`python run.py --analyze`（全部 AI 分析，不启动服务；同上，自动回退到 `python3`）
+   - 用户可要求追加：`--dashboard`（会启动服务并阻塞，需后台运行或手动停止）。
 
 4. **解析日志与输出**
    - 如果命令失败，记录错误信息、traceback 和退出码。
@@ -60,7 +60,7 @@ description: |
 - **关键输出摘要**：...
 - **错误**（如有）：...
 
-### 2. `python[3] run.py --notes-only`
+### 2. `python[3] run.py --analyze`（全部 AI 分析：处理新笔记 + 生成 dashboard 数据，不启动服务）
 - ...
 
 ## 日志检查（analysis/process_log.jsonl）
