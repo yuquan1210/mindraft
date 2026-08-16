@@ -64,7 +64,7 @@ Mindraft 是双 Repo 架构——代码在 `mindraft/`，笔记在 `notes-vault/
 | Phase 0 | filesystem | 读写双 Repo |
 | Phase 2 | browser | 预览 Dashboard |
 | Phase 5 | fetch | 抓取笔记中的 URL 生成摘要 |
-| Phase 6 | replicate (自定义) | 调用 Replicate API 生成像素画 |
+| Phase 6-7 | 无新增 | 像素世界素材与 Kaplay.js 均为本地文件（见 ADR-015） |
 
 > 提示：VS Code Copilot Chat 自带文件读写和终端执行能力，很多场景不需要额外 MCP。MCP 主要用于 Agent 需要访问**当前 workspace 之外**的资源时。
 

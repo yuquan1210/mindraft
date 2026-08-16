@@ -9,7 +9,7 @@
 
 **当前阶段**：Phase 2 ✅ 已完成 → Phase 3 ⬜ 未开始
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-08-08
+**最后更新**：2026-08-16
 
 ---
 
@@ -169,6 +169,17 @@
 
 ---
 
+### ADR-015：像素世界替代像素画形象（AI 导演 + Kaplay.js）
+
+| 项 | 内容 |
+|----|------|
+| **决策** | 原 Phase 6「像素画形象」（Replicate API 生成 + seed 重绘）整体替换为「AI 导演的像素小人世界」，并拆分为两个 Phase：Phase 6 渲染基建（素材编目 + Kaplay.js 渲染器 + 剧本执行器，无 AI）、Phase 7 AI 导演与场景进化（Python 侧 LLM 场景生成 + 增量进化）。渲染器命名为 `pixel_world`，原 `pixel_art` / `animated_sprite` / `game` 渲染器规划作废（ADR-007 的数据契约与插件机制不变，仅渲染器集合调整） |
+| **理由** | 像素世界与 ADR-007 数据/渲染分离架构同构（场景剧本 JSON 即渲染输入）；形象延续性由「场景状态持久化 + 增量变更」天然保证，比图片重绘更稳；去掉外部图像 API 的不确定性与成本 |
+| **约束** | ① LLM 场景生成全部在 Python 侧（`analyze.py`），前端只读 `dashboard/data/scene.json`，不在浏览器调 LLM API（ADR-005 / ADR-012）；② 场景进化遵循 ADR-004：LLM 只输出对当前场景的增量变更，Genesis 全量生成仅限首次/重置；③ LLM 输出经 jsonschema 校验 + `assets_manifest.json` 素材 id 引用校验，失败重试一次后保留旧场景（ADR-009）；④ 场景状态存 `{notes_vault}/.mindraft/scene_state.json`，`safe_write_json()` 原子写入（ADR-008 / ADR-014）；⑤ 像素素材包不提交入库（版权问题），Kaplay.js vendor 到 `dashboard/vendor/` 保证离线可用 |
+| **状态** | ✅ 已确认 |
+
+---
+
 ## 实现阶段状态
 
 | 阶段 | 状态 | 完成日期 | 核心产物 |
@@ -179,7 +190,8 @@
 | Phase 3：记忆系统完善 | ⬜ 未开始 | — | 记忆压缩、MBTI 描述、Road Map |
 | Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
 | Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
-| Phase 6：像素画形象 | ⬜ 未开始 | — | Replicate API、PixelArtRenderer |
+| Phase 6：像素世界渲染基建（无 AI） | ⬜ 未开始 | — | 素材 manifest、Kaplay.js、`pixel_world_renderer.js`、剧本执行器（ADR-015） |
+| Phase 7：AI 导演与场景进化 | ⬜ 未开始 | — | `scene_state.json`、SCENE_DIRECTOR_ROLE、`scene_director.yml`、增量进化（ADR-015） |
 
 ---
 
@@ -280,7 +292,7 @@ mindraft/
 | 类别 | 可选值 |
 |------|--------|
 | LLM 提供者 | `kimi` \| `openai` \| `anthropic` \| `deepseek` |
-| 渲染器类型 | `text_card` \| `pixel_art` \| `animated_sprite` \| `game` |
+| 渲染器类型 | `text_card` \| `pixel_world`（ADR-015，`pixel_art` / `animated_sprite` / `game` 规划已作废） |
 | 变化量级 | `micro` \| `macro` \| `transformation` |
 | Memory 操作 | `APPEND_TO` \| `SET_IF_NEW`（仅这两种，其余忽略） |
 | Token 估算 | `char_ratio`（默认）\| `tiktoken` |
@@ -293,10 +305,12 @@ mindraft/
 | 主配置 | `mindraft/config.yml` |
 | 记忆状态 | `{notes_vault}/.mindraft/memory.json` |
 | 形象数据 | `{notes_vault}/.mindraft/avatar_data.json` |
+| 像素世界场景状态 | `{notes_vault}/.mindraft/scene_state.json`（Phase 7 规划） |
 | 关联图谱 | `{notes_vault}/.mindraft/relationships.json` |
 | AI 处理日志 | `mindraft/logs/process_log.jsonl` |
 | 进程锁 | `mindraft/.mindraft.lock` |
 | 前端配置 | `mindraft/dashboard/data/config.json` |
+| 像素世界场景剧本 | `mindraft/dashboard/data/scene.json`（Phase 7 规划） |
 
 ---
 
@@ -627,3 +641,36 @@ mindraft/
 
 **验证结果**
 - `pytest` 8 个测试全过；`skills/tagging.yml` YAML 加载正常。
+
+
+---
+
+### Phase 6 方案变更：像素画 → AI 导演的像素小人世界（ADR-015，2026-08-16）
+
+**背景**
+原 Phase 6 规划为「像素画形象」（Replicate API 生成个性化像素画 + 基于 seed 重绘）。用户提出替换为「AI 导演的像素小人世界」：Dashboard 中一个不与用户交互的窗口小游戏，AI 根据笔记产出的内容设计世界元素（小人样貌、场景风格、物件摆放、行为剧本）。经可行性评估后确认替换，并因工作量更大拆分为两个 Phase。
+
+**可行性评估结论（针对用户提供的参考方案）**
+- 整体架构（AI 导演 → 场景剧本 JSON → 渲染引擎）与 ADR-007 数据/渲染分离同构，`avatar_data.json` 预埋的 `room_objects` / `scene` / `thought_bubble` 字段正好是场景输入；方案可行。
+- 参考方案需修正三点才符合项目约束：① LLM 调用不能在前端 `fetch`（违反 ADR-005/ADR-012），改由 `analyze.py` 生成场景 JSON 供前端读取；② 场景不能每次整体重建（违反 ADR-004），改为场景状态持久化 + LLM 只输出增量变更；③ 素材需 manifest 编目 + LLM 输出引用 id 存在性校验（jsonschema 无法覆盖引用完整性）。
+
+**决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 方案替换 | Phase 6 像素画（Replicate API）整体作废，替换为像素小人世界 |
+| Phase 拆分 | Phase 6 = 渲染基建（素材编目 + Kaplay.js + 剧本执行器，硬编码场景，无 AI）；Phase 7 = AI 导演与场景进化（LLM 生成 + Genesis/Evolution + 状态持久化） |
+| 渲染引擎 | Kaplay.js，vendor 到 `dashboard/vendor/`（不走 CDN，保证 `--dashboard` 离线可用） |
+| 素材 | 用户自行解决版权问题；素材包不入库（`.gitignore`），以 `assets_manifest.json` 编目（角色/家具/地板 + 动作列表） |
+| 渲染器命名 | `pixel_world`；`pixel_art` / `animated_sprite` / `game` 渲染器规划作废 |
+| 场景状态 | `{notes_vault}/.mindraft/scene_state.json`（`safe_write_json` 原子写入）→ 同步 `dashboard/data/scene.json` |
+| 进化机制 | 复用 Phase 4 `assess_change_magnitude()`：micro 只更新动作剧本/气泡，macro 追加/移动物件，transformation 才换地板墙壁风格 |
+| 用户交互 | 无交互，纯观赏窗口；可交互元素列入 Future |
+
+**文档同步**
+- `doc/Mindraft.md`：§3 技术选型表、§4 config 渲染器取值、§5.6 渲染器列表/切换成本/三级变化机制（denoising 重绘语义改为场景增量变更语义）/字段渲染器使用表、§6 画像区域说明、目录结构（renderers/vendor/assets/scene.json）、§8 数据流、§9 Phase 6/7 与 Future。
+- `doc/mindraft-log.md`：ADR-015、阶段状态表、命名约定、关键文件路径。
+- `AGENTS.md`、`doc/Mindraft-Vibe-Coding-Guide.md` 同步。
+
+**备注**
+- `avatar_data.json` 示例中的 `base_image_seed` 字段已随像素画方案一并移除（Phase 4 尚未实现，契约未冻结）。

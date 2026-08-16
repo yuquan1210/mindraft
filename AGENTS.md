@@ -17,7 +17,8 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 ## 当前状态
 
 - **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。下一步 Phase 3（记忆压缩、跨周快照等，见 `doc/mindraft-log.md` 与 `doc/Mindraft.md` §9）。
-- Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、`summary_style.yml`、笔记关联、URL 抓取、像素画形象。
+- Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、`summary_style.yml`、笔记关联、URL 抓取。
+- 形象规划：原「像素画形象」已替换为「AI 导演的像素小人世界」（ADR-015），拆为 Phase 6（Kaplay.js 渲染基建，无 AI）与 Phase 7（LLM 场景生成 + 增量进化）。
 - 注意：`config.yml` 中 `summary_style` / `analysis_style` / `memory_compression` 三个 skill 开关对应的 yml 文件尚不存在，`skills/` 下实际只有 `note_style.yml`、`tagging.yml`、`json_output.yml`。
 
 ## 目录结构

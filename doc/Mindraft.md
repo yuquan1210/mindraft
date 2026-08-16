@@ -216,17 +216,19 @@ mindraft/
 │   ├── app.js
 │   ├── renderers/                # 画像渲染插件（可替换）
 │   │   ├── base_renderer.js
-│   │   ├── text_card_renderer.js     # Phase 1 MVP
-│   │   ├── pixel_art_renderer.js     # Phase 2
-│   │   ├── animated_sprite_renderer.js
-│   │   └── game_renderer.js          # Phase 3
+│   │   ├── text_card_renderer.js     # Phase 4
+│   │   └── pixel_world_renderer.js   # Phase 6-7（Kaplay.js 像素小人世界）
+│   ├── vendor/                   # 前端依赖本地副本（Kaplay.js，Phase 6）
+│   ├── assets/                   # 像素素材图集（不入库，Phase 6）
+│   │   └── assets_manifest.json  # 素材清单（AI 导演的可用资源目录）
 │   └── data/                     # analyze.py 输出，JS 直接读取
 │       ├── config.json            # 前端配置（含 memory_hash）
 │       ├── stats.json             # 字数 / 日历数据
 │       ├── summaries.json         # 每日摘要
 │       ├── recent_notes.json      # 最近处理笔记列表
 │       ├── roadmap.json           # 周快照历史（Phase 3 规划）
-│       └── avatar_data.json       # 画像数据（Phase 4 规划）
+│       ├── avatar_data.json       # 画像数据（Phase 4 规划）
+│       └── scene.json             # 像素世界场景剧本（Phase 7 规划）
 │
 ├── config.yml                    # 配置文件
 ├── run.py                        # 一键入口
@@ -247,8 +249,8 @@ mindraft/
 | 前端 | 原生 HTML + CSS + JS | 零框架，直接上手 |
 | 图表库 | Chart.js（CDN 引入） | 无需安装，一行引入 |
 | 本地服务 | Python `http.server` | 内置模块，无需安装 |
-| 画像生成（Phase 2） | Replicate API | 有专门的 pixel art 模型 |
-| 画像游戏化（Phase 3） | Phaser.js / Three.js | 成熟的前端游戏/3D 框架 |
+| 像素世界渲染（Phase 6-7） | Kaplay.js（vendor 本地引入） | 轻量 2D 游戏引擎，原生支持 Aseprite 图集 |
+| 像素素材（Phase 6-7） | 自选像素素材包 + Aseprite 切图编目 | 素材不提交入库，通过 `assets_manifest.json` 编目 |
 | IDE | VS Code + Claude Code | 适合 vibe coding |
 
 ### config.yml 关键配置项
@@ -257,7 +259,7 @@ mindraft/
 |--------|------|--------|
 | `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
 | `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic \| deepseek` |
-| `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_art \| game` |
+| `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_world` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |
 | `token_estimation` | Token 估算方式 | `char_ratio \| tiktoken` |
 | `note_filter.min_meaningful_chars` | 笔记最低有效字符数 | `20` |
@@ -637,19 +639,17 @@ Avatar Data（稳定的数据契约）    ← 这层永远不变
     ▼
 Avatar Renderer（可替换的插件）  ← 只改这层
     │
-    ├── TextCardRenderer         # Phase 1 MVP
-    ├── PixelArtRenderer         # Phase 2
-    ├── AnimatedSpriteRenderer   # Phase 2+
-    └── GameRenderer             # Phase 3
+    ├── TextCardRenderer         # Phase 4
+    └── PixelWorldRenderer       # Phase 6-7（AI 导演的像素小人世界）
 ```
 
 **切换表现形式的成本：**
 
 | 替换内容 | 难度 | 需要改动的地方 |
 |---------|------|--------------|
-| 换艺术风格（像素 → 水彩） | 低 | 改 `pixel_art_renderer.js` 中的 prompt 模板 |
-| 换图片生成服务（Replicate → DALL-E） | 低 | 改 `analyze.py` 中一个函数 |
-| 换整体形式（图片 → 小游戏） | 中 | 新建 `game_renderer.js`，config 改一行 |
+| 换像素素材包 | 低 | 替换 `dashboard/assets/` 图集 + 更新 `assets_manifest.json` |
+| 换游戏引擎（Kaplay → 其他） | 中 | 重写 `pixel_world_renderer.js`，scene JSON 契约不变 |
+| 换整体形式（像素世界 → 其他） | 中 | 新建渲染器，config 改一行 |
 
 ---
 
@@ -669,20 +669,20 @@ Micro（每次运行都可能更新）
   · mood / energy_level / stress_level
   · thought_bubble（角色当前在想什么）
   · recent_highlights（近期发生的亮点）
-  · 像素画：低 denoising (0.2)，保留形象主体，只更新表情/姿态
+  · 像素世界：更新角色动作剧本、表情与头顶气泡，场景不变
 
 Macro（数周内缓慢积累）
   · room_objects 追加新物件（新爱好 → 书桌多了本新书）
   · traits 权重调整（某个特质越来越突出则加粗描述）
   · description 的侧重点/语气随状态演变
   · scene 细节调整（时间段、光线、氛围）
-  · 像素画：中 denoising (0.45)，添加新配饰/道具，整体轮廓保持
+  · 像素世界：场景增量变更——追加/移动物件、调整角色外观部件，房间布局保持
 
 Transformation（稀有，标志性人生转变）
   · visual_anchors 更新（风格/外貌大幅变化）
   · color_palette 整体切换（气质转变）
   · style_era 更新（进入新的人生阶段）
-  · 像素画：高 denoising (0.80)，大幅重绘，但保留 seed 作为历史参照
+  · 像素世界：允许换地板/墙壁风格、角色外观大幅调整，但场景状态中的历史物件不删除
 ```
 
 **变化量级评估规则：**
@@ -711,7 +711,6 @@ Transformation（稀有，标志性人生转变）
     "version": 4,
     "established_at": "2026-06-01",
     "last_evolved_at": "2026-06-15",
-    "base_image_seed": "kimi_seed_20260601_7a3f",      // 像素画可复现基础形象
     "core_traits": ["注重细节", "内向", "逻辑导向"],    // 稳定人格特质
     "visual_anchors": ["眼镜", "深色系穿搭", "短发"],   // 外貌稳定元素
     "style_era": {
@@ -776,14 +775,14 @@ Transformation（稀有，标志性人生转变）
 
 **各字段的渲染器使用情况：**
 
-| 字段 | TextCard | PixelArt | Game |
-|------|---------|----------|------|
-| `core.mood` / `energy_level` | 选择占位表情 | 选择角色动作帧 | 驱动角色动画状态 |
-| `description` | ✅ 显示文字 | ✅ 显示文字 | 作为 NPC 对话 |
-| `traits` | ✅ tag 标签 | ✅ tag 标签 | 影响角色行为逻辑 |
-| `thought_bubble` | ❌ 忽略 | ❌ 忽略 | ✅ 角色头顶气泡 |
-| `room_objects` | ❌ 忽略 | ❌ 忽略 | ✅ 生成场景物品 |
-| `color_palette` | ❌ 忽略 | ✅ 图片配色参考 | ✅ 场景主色调 |
+| 字段 | TextCard | PixelWorld |
+|------|---------|------------|
+| `core.mood` / `energy_level` | 选择占位表情 | 驱动角色动画状态 |
+| `description` | ✅ 显示文字 | 作为角色对话/独白文本 |
+| `traits` | ✅ tag 标签 | 影响角色行为逻辑 |
+| `thought_bubble` | ❌ 忽略 | ✅ 角色头顶气泡 |
+| `room_objects` | ❌ 忽略 | ✅ 生成场景物品 |
+| `color_palette` | ❌ 忽略 | ✅ 场景主色调 |
 
 ---
 
@@ -872,9 +871,8 @@ Hover 展示：
 左侧：由当前 renderer 渲染的画像区域
 右侧：description 文字 + traits 标签 + recent_highlights 列表
 
-Phase 1（text_card）：左侧为根据 mood 状态切换的预设占位像素图
-Phase 2（pixel_art）：左侧为 Replicate API 生成的个性化像素图
-Phase 3（game）：     整个区域替换为可交互的内嵌游戏场景
+text_card（Phase 4）：   左侧为根据 mood 状态切换的预设占位像素图
+pixel_world（Phase 6-7）：整个区域替换为 AI 导演的像素小人世界窗口
 ```
 
 ---
@@ -955,11 +953,12 @@ run.py 执行
     │     ├── 生成 roadmap.json（from history_archive + snapshots）（Phase 3 规划）
     │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 规划）
     │     ├── 生成 avatar_data.json（画像数据契约）（Phase 4 规划）
-    │     │     └── if renderer == "pixel_art":
-    │     │             调用 Replicate API 生成图片
-    │     │             将 image_url 写入 avatar_data
+    │     ├── 生成像素世界场景剧本（Phase 7 规划）
+    │     │     └── LLM 基于 avatar_data + assets_manifest + 当前场景状态
+    │     │             Genesis 全量生成 / Evolution 增量变更
+    │     │             写入 {vault}/.mindraft/scene_state.json
     │     ├── 导出前端配置到 dashboard/data/config.json
-    │     ├── 同步 avatar_data.json 到 dashboard/data/
+    │     ├── 同步 avatar_data.json / scene.json 到 dashboard/data/
     │     └── 检测跨周 → 自动生成 snapshots/YYYY-WXX.json
     │
     └─► [展示] serve.py
@@ -1139,20 +1138,48 @@ run.py 执行
 
 ---
 
-### Phase 6 — 像素画形象
+### Phase 6 — 像素世界渲染基建（无 AI）
 
-**目标**：用户形象升级为 AI 生成的个性化像素画，随笔记进化演变
+**目标**：Dashboard 中出现一个由固定剧本驱动的像素小人世界窗口（Kaplay.js），渲染管线完全跑通，但场景内容暂不接入 LLM
+
+**背景**：本阶段与 Phase 7 共同替代原「像素画形象（Replicate API）」方案。改为「AI 导演的像素小人世界」：AI 根据笔记产出场景剧本 JSON，前端 Kaplay.js 忠实渲染，不与用户交互。架构与决策依据见 `doc/mindraft-log.md` ADR-015。
 
 **实现内容**
-- Replicate API 集成（像素画生成 + 基于 seed 重绘）
-- `pixel_art_renderer.js`
-- 三级变化机制与 denoising 参数（micro: 0.20 / macro: 0.45 / transformation: 0.80）
-- Dashboard：像素画过渡动效（subtle / morph / dramatic）
+- 素材准备：选定像素素材包（版权自洽，不提交入库，`.gitignore` 排除），用 Aseprite 切图/导出图集
+- `assets_manifest.json`：编目所有可用素材（角色部件 / 家具 / 地板 / 墙壁），含 id、名称、tags、grid_size，以及角色可用动作列表（`walkTo` / `wait` / `interact` / `emote`）——这是后续 AI 导演理解可用资源的唯一途径
+- Scene JSON 契约：定义场景描述格式（地板/墙壁 + 物件列表 id+格子坐标 + 角色 skin 与初始位置 + 动作剧本），先以硬编码示例场景驱动开发
+- Kaplay.js vendor 到 `dashboard/vendor/`（不走 CDN，保证离线可用）；素材放 `dashboard/assets/`
+- `pixel_world_renderer.js`：解析 Scene JSON → 渲染地板/墙壁/物件/角色；剧本执行器按序执行动作，含简单寻路；剧本结束后进入环境行为循环（idle 动画 + 剧本循环）
+- Dashboard 集成：`config.yml → avatar.renderer: pixel_world` 时画像区域加载像素世界窗口，`text_card` 可回退
 
 **验收标准**
-- 首次运行生成像素画像，`avatar_data.json` 记录 `base_image_seed`
-- 后续运行根据变化量级选择重绘强度，形象可识别地延续
-- Dashboard 显示带过渡效果的像素画
+- 硬编码示例 Scene JSON 在 Dashboard 中渲染出完整场景，小人按剧本行动并循环播放
+- `avatar.renderer` 在 `text_card` / `pixel_world` 间切换只需改 config 一行
+- `python run.py --dashboard` 在无 API key、纯静态环境下正常展示像素世界
+
+**阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 7
+
+---
+
+### Phase 7 — AI 导演与场景进化
+
+**目标**：场景由 LLM 根据笔记内容生成，并随记忆增量进化（场景状态持久化，不整体重建）
+
+**实现内容**
+- Python 侧场景生成（LLM 调用全部在后端，前端只读 `dashboard/data/scene.json`，符合 ADR-005 / ADR-012）：
+  - `prompts.py` 新增 `SCENE_DIRECTOR_ROLE`；`skills/scene_director.yml`（场景设计规则）
+  - `schemas.py` 新增 Scene 输出 JSON Schema；`analyze.py` 扩展生成场景
+- Genesis / Evolution 两模式（复用 Phase 4 的 `assess_change_magnitude()`，遵循 ADR-004）：
+  - Genesis：首次运行，LLM 基于 `avatar_data.json` + manifest 全量生成场景
+  - Evolution：LLM 只输出对当前场景的增量变更指令——micro 只更新动作剧本/气泡，macro 追加/移动物件与角色外观部件，transformation 才允许换地板墙壁风格
+- 场景状态持久化：`{notes_vault}/.mindraft/scene_state.json`（`safe_write_json()` 原子写入），同步导出 `dashboard/data/scene.json`
+- 输出校验：jsonschema 结构校验 + manifest 素材 id 引用存在性校验，失败走 `_call_with_retry()` 重试一次，仍失败保留旧场景不中断流程（ADR-009）
+
+**验收标准**
+- 首次 `run.py` 执行后生成场景（genesis=true），Dashboard 展示与笔记内容相符的场景
+- 后续运行按变化量级做增量变更，房间布局与既有物件不被整体重建
+- LLM 编造不存在的素材 id 时被校验拦截并重试，最终失败时保留旧场景、Dashboard 正常展示
+- `--dry-run` 调用 LLM 但不写入 `scene_state.json` / `scene.json`
 
 **阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认
 
@@ -1162,7 +1189,7 @@ run.py 执行
 
 - 自动触发：GitHub Actions（push 后自动执行）
 - 云端部署：Vercel（前端）+ Railway（Python 后端）
-- 游戏形象：`game_renderer.js`（Phaser.js 内嵌小游戏）
+- 像素世界扩展：多房间/多角色、NPC 互动、用户可交互元素
 - 多用户支持（账号系统 + 数据隔离）
 - 移动端适配
 - 接入更多笔记源（Notion / Apple Notes）
