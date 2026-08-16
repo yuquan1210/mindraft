@@ -2,7 +2,7 @@
 
 > 本文件是 AI Agent 的项目入口，每次会话自动读取。细节文档按需查阅：
 > - `doc/Mindraft.md`（产品方案与阶段设计）
-> - `doc/mindraft-log.md`（实现日志 + ADR-001~013，架构决策的唯一权威来源）
+> - `doc/mindraft-log.md`（实现日志 + ADR-001~014，架构决策的唯一权威来源）
 > - `doc/Mindraft-Vibe-Coding-Guide.md`（人机协作流程）
 
 ## 项目定位
@@ -39,10 +39,11 @@ mindraft/
 │   └── utils.py          # safe_write_json、token 估算、配置加载等
 ├── skills/               # *.yml Skill 配置
 ├── dashboard/            # 静态前端（index.html / app.js / style.css / data/）
+├── logs/                 # process_log.jsonl（运行日志，gitignore）
 └── tests/                # pytest
 ```
 
-笔记仓库侧的关键路径（代码生成，勿手改）：`{notes_vault}/analysis/memory.json`、`process_log.jsonl`、`.mindraft.lock`；AI 重写笔记写入 `{notes_vault}/ai_notes/`。
+关键路径（代码生成，勿手改）：记忆状态在 `{notes_vault}/.mindraft/memory.json`（隐藏目录，ADR-014）；日志在 `mindraft/logs/process_log.jsonl`；进程锁在 `mindraft/.mindraft.lock`；AI 重写笔记写入 `{notes_vault}/ai_notes/`。
 
 ## 常用命令
 

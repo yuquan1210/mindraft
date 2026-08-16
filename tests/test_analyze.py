@@ -29,14 +29,14 @@ class FakeLLM:
 
 def _make_vault(vault_path: Path, memory: dict | None = None) -> dict:
     """创建临时 vault，写入 memory.json，返回 config。"""
-    (vault_path / "analysis").mkdir(parents=True)
+    (vault_path / ".mindraft").mkdir(parents=True)
     if memory is None:
         memory = {
             "meta": {"processed_notes": ["note-a.md"]},
             "active_memory": {d: {} for d in ["work", "life", "growth", "wellbeing", "identity"]},
             "tag_candidates": {},
         }
-    (vault_path / "analysis" / "memory.json").write_text(
+    (vault_path / ".mindraft" / "memory.json").write_text(
         json.dumps(memory, ensure_ascii=False), encoding="utf-8"
     )
     return {"notes_vault_path": str(vault_path)}
@@ -69,10 +69,10 @@ def test_regenerates_when_memory_changed(tmp_path):
     _run_with_fake_llm(config, data_dir)
 
     memory = json.loads(
-        (tmp_path / "vault" / "analysis" / "memory.json").read_text(encoding="utf-8")
+        (tmp_path / "vault" / ".mindraft" / "memory.json").read_text(encoding="utf-8")
     )
     memory["tag_candidates"] = {"new-tag": 1}
-    (tmp_path / "vault" / "analysis" / "memory.json").write_text(
+    (tmp_path / "vault" / ".mindraft" / "memory.json").write_text(
         json.dumps(memory, ensure_ascii=False), encoding="utf-8"
     )
 

@@ -16,6 +16,7 @@ from scripts.utils import (
     safe_write_json,
     token_estimate,
     today_iso,
+    get_memory_path,
     get_nested,
     set_nested,
     exists_nested,
@@ -81,7 +82,7 @@ def create_initial_memory() -> dict:
 def process_new_notes(config: dict, dry_run: bool = False):
     """处理 raw_notes 中的新笔记。"""
     vault = Path(config["notes_vault_path"]).expanduser()
-    memory_path = vault / "analysis" / "memory.json"
+    memory_path = get_memory_path(config)
     memory = create_initial_memory()
     if memory_path.exists():
         memory = json.loads(memory_path.read_text(encoding="utf-8"))

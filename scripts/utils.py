@@ -12,6 +12,43 @@ from filelock import FileLock
 
 logger = logging.getLogger("mindraft")
 
+# mindraft 项目根目录（scripts/ 的上一级）
+PROJECT_ROOT = Path(__file__).parent.parent
+
+# 笔记仓库侧的状态目录（隐藏目录，避免在 Obsidian 文件树中干扰用户）
+VAULT_STATE_DIR = ".mindraft"
+
+
+# ── 状态文件路径 ──────────────────────────────────────
+def get_memory_path(config: dict) -> Path:
+    """memory.json 路径：{notes_vault}/.mindraft/memory.json。"""
+    return Path(config["notes_vault_path"]).expanduser() / VAULT_STATE_DIR / "memory.json"
+
+
+def get_log_path(config: dict) -> Path:
+    """process_log.jsonl 路径：相对于 mindraft 项目根目录（如 logs/process_log.jsonl）。"""
+    return PROJECT_ROOT / config.get("logging", {}).get("file", "logs/process_log.jsonl")
+
+
+def migrate_legacy_analysis_state(config: dict):
+    """
+    一次性迁移旧布局：{vault}/analysis/memory.json → {vault}/.mindraft/memory.json。
+    旧日志等其他文件不迁移；analysis/ 目录空了才删除，否则提示用户手动清理。
+    """
+    vault = Path(config["notes_vault_path"]).expanduser()
+    legacy_dir = vault / "analysis"
+    legacy_memory = legacy_dir / "memory.json"
+    new_memory = get_memory_path(config)
+    if not legacy_memory.exists() or new_memory.exists():
+        return
+    new_memory.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(legacy_memory), str(new_memory))
+    logger.info(f"已迁移 memory.json：{legacy_memory} → {new_memory}")
+    try:
+        legacy_dir.rmdir()  # 仅当目录为空时成功
+    except OSError:
+        logger.info(f"旧目录 {legacy_dir} 中仍有遗留文件，确认无用后可手动删除")
+
 
 # ── 配置加载 ──────────────────────────────────────────
 def _resolve_env_placeholders(value):
@@ -124,10 +161,9 @@ def safe_write_json(filepath: str, data: dict):
 
 
 # ── 进程锁 ──────────────────────────────────────────
-def get_process_lock(notes_vault_path: str) -> FileLock:
-    """获取进程级文件锁，防止并发执行"""
-    lock_path = Path(notes_vault_path) / "analysis" / ".mindraft.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+def get_process_lock() -> FileLock:
+    """获取进程级文件锁，防止并发执行。锁文件位于 mindraft 项目根目录。"""
+    lock_path = PROJECT_ROOT / ".mindraft.lock"
     return FileLock(str(lock_path), timeout=10)
 
 
@@ -135,8 +171,8 @@ def get_process_lock(notes_vault_path: str) -> FileLock:
 def reset_analysis_state(config: dict) -> list[str]:
     """
     清空全部分析产物（--rebuild 用），返回已删除的路径列表：
-    - {vault}/analysis/memory.json
-    - {vault}/analysis/process_log.jsonl（按 config.logging.file 定位）
+    - {vault}/.mindraft/memory.json
+    - {mindraft}/logs/process_log.jsonl（按 config.logging.file 定位）
     - {vault}/ai_notes/ 整个目录
     - dashboard/data/*.json
     raw_notes/ 与 .mindraft.lock 不动。
@@ -146,8 +182,11 @@ def reset_analysis_state(config: dict) -> list[str]:
     vault = Path(config["notes_vault_path"]).expanduser()
     removed = []
 
-    log_file = vault / config.get("logging", {}).get("file", "analysis/process_log.jsonl")
-    for path in [vault / "analysis" / "memory.json", log_file]:
+    for path in [
+        get_memory_path(config),
+        get_log_path(config),
+        vault / "analysis" / "memory.json",  # 旧布局遗留，一并清除
+    ]:
         if path.exists():
             path.unlink()
             removed.append(str(path))
@@ -157,7 +196,7 @@ def reset_analysis_state(config: dict) -> list[str]:
         shutil.rmtree(ai_notes_dir)
         removed.append(str(ai_notes_dir))
 
-    dashboard_data_dir = Path(__file__).parent.parent / "dashboard" / "data"
+    dashboard_data_dir = PROJECT_ROOT / "dashboard" / "data"
     if dashboard_data_dir.exists():
         for json_file in dashboard_data_dir.glob("*.json"):
             json_file.unlink()
@@ -171,9 +210,7 @@ def setup_logging(config: dict):
     """初始化日志系统，输出到文件 + 控制台"""
     log_config = config.get("logging", {})
     level = getattr(logging, log_config.get("level", "INFO"))
-    log_file = Path(config["notes_vault_path"]) / log_config.get(
-        "file", "analysis/process_log.jsonl"
-    )
+    log_file = get_log_path(config)
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger("mindraft")

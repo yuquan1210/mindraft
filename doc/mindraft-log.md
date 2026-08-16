@@ -158,6 +158,17 @@
 
 ---
 
+### ADR-014：分析产物存放位置（隐藏目录 + 运行状态归代码仓）
+
+| 项 | 内容 |
+|----|------|
+| **决策** | `memory.json` 等用户记忆资产留在 notes-vault，但从 `analysis/` 迁入隐藏目录 `.mindraft/`；`process_log.jsonl` 与 `.mindraft.lock` 等纯运行状态迁出 notes-vault，放到 mindraft 项目根目录（`logs/`、`.mindraft.lock`） |
+| **理由** | memory 是 per-vault 的用户数据，应随笔记备份/迁移，且避免进入推到 GitHub 的代码仓带来隐私风险；而日志与进程锁用户不关心，放代码仓更合理。隐藏目录让 Obsidian 文件树不被 `analysis/` 干扰 |
+| **影响** | 路径统一由 `utils.get_memory_path()` / `get_log_path()` 提供；`run.py` 启动时自动迁移旧 `{vault}/analysis/memory.json`；`config.yml → logging.file` 改为相对 mindraft 根目录；`logs/` 与 `.mindraft.lock` 加入 `.gitignore` |
+| **状态** | ✅ 已确认 |
+
+---
+
 ## 实现阶段状态
 
 | 阶段 | 状态 | 完成日期 | 核心产物 |
@@ -241,7 +252,7 @@ notes-vault/
 ├── ai_notes/           ← AI 处理结果（按类别存放）
 │   ├── work/
 │   └── life/
-└── analysis/           ← 分析产物（JSON 文件）
+└── .mindraft/          ← 分析产物（隐藏目录，JSON 文件）
     ├── memory.json
     ├── avatar_data.json
     └── relationships.json
@@ -249,6 +260,8 @@ notes-vault/
 mindraft/
 ├── config.yml          ← 主配置文件
 ├── run.py              ← CLI 入口
+├── logs/               ← process_log.jsonl（运行日志，gitignore）
+├── .mindraft.lock      ← 进程锁（运行时自动创建，gitignore）
 ├── scripts/            ← Python 处理脚本
 │   ├── llm/            ← LLM 抽象层
 │   ├── process_notes.py
@@ -278,11 +291,11 @@ mindraft/
 | 文件 | 路径 |
 |------|------|
 | 主配置 | `mindraft/config.yml` |
-| 记忆状态 | `{notes_vault}/analysis/memory.json` |
-| 形象数据 | `{notes_vault}/analysis/avatar_data.json` |
-| 关联图谱 | `{notes_vault}/analysis/relationships.json` |
-| AI 处理日志 | `{notes_vault}/analysis/process_log.jsonl` |
-| 进程锁 | `{notes_vault}/analysis/.mindraft.lock` |
+| 记忆状态 | `{notes_vault}/.mindraft/memory.json` |
+| 形象数据 | `{notes_vault}/.mindraft/avatar_data.json` |
+| 关联图谱 | `{notes_vault}/.mindraft/relationships.json` |
+| AI 处理日志 | `mindraft/logs/process_log.jsonl` |
+| 进程锁 | `mindraft/.mindraft.lock` |
 | 前端配置 | `mindraft/dashboard/data/config.json` |
 
 ---
@@ -562,3 +575,27 @@ mindraft/
 **验证结果**
 - `pytest` 8 个测试全过（含 3 个新用例）。
 - 真实 vault 端到端：第一次 `--analyze` 因旧 config.json 无 `memory_hash` 正常重新生成；紧接着第二次 memory 未变，日志输出「跳过生成」，零 LLM 调用。
+
+
+---
+
+### 分析产物存放位置调整（ADR-014，2026-08-16）
+
+**背景**
+用户提出 notes-vault 应只承载「写笔记 + 看整理后的笔记」，分析结果 JSON 不应出现在用户的笔记仓库里。讨论后结论：`memory.json` 是 per-vault 的用户记忆资产（应随笔记备份/迁移，且不应进入推到 GitHub 的代码仓），留在 vault 但迁入隐藏目录；日志与进程锁是纯运行状态，迁到 mindraft 代码仓。
+
+**完成内容**
+1. `scripts/utils.py`：新增 `PROJECT_ROOT`、`VAULT_STATE_DIR = ".mindraft"` 常量与 `get_memory_path()` / `get_log_path()` 路径 helper；`get_process_lock()` 锁文件改到 mindraft 根目录 `.mindraft.lock`（不再接收 vault 参数）；`setup_logging()` 与 `reset_analysis_state()` 改用 helper；新增 `migrate_legacy_analysis_state()` 一次性迁移旧 `{vault}/analysis/memory.json`。
+2. `process_notes.py` / `analyze.py`：memory 路径统一走 `get_memory_path()`，不再硬编码 `analysis/memory.json`。
+3. `run.py`：`setup_logging()` 后调用迁移函数；锁调用适配新签名。`reset_analysis_state()` 会一并清除旧布局遗留的 `analysis/memory.json`，避免 `--rebuild` 时被迁移"复活"。
+4. `config.yml`：`logging.file` 改为 `logs/process_log.jsonl`，语义从「相对 notes_vault_path」改为「相对 mindraft 项目根目录」。
+5. `.gitignore`：移除 `analysis/`，新增 `logs/` 与 `.mindraft.lock`。
+6. 测试：`tests/test_process_notes.py`、`tests/test_analyze.py` 中 `analysis/` 路径全部改为 `.mindraft/`。
+
+**主要决策**
+- 日志和锁搬到 mindraft：用户不关心的纯运行状态不属于笔记仓库。
+- memory.json 留在 vault 但用 `.mindraft/` 隐藏目录：Obsidian 文件树默认不显示点开头的目录，用户无感；同时保留「状态随 vault 走」的架构归属。
+- 旧日志等遗留文件不自动迁移/删除，`analysis/` 目录空了才移除，否则提示用户手动清理。
+
+**验证结果**
+- `pytest` 8 个测试全过。

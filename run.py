@@ -2,7 +2,12 @@ import argparse
 
 from filelock import Timeout
 
-from scripts.utils import load_config, get_process_lock, setup_logging
+from scripts.utils import (
+    load_config,
+    get_process_lock,
+    setup_logging,
+    migrate_legacy_analysis_state,
+)
 
 
 def main():
@@ -36,6 +41,9 @@ def main():
 
     logger.info(f"Mindraft 启动 | dry_run={args.dry_run}")
 
+    # 旧布局迁移：{vault}/analysis/memory.json → {vault}/.mindraft/memory.json
+    migrate_legacy_analysis_state(config)
+
     if args.rebuild:
         if removed:
             logger.info("--rebuild：已清空分析结果：")
@@ -51,7 +59,7 @@ def main():
         return
 
     # 获取进程锁，防止并发执行（dry-run 模式下也获取锁，保证并发安全）
-    lock = get_process_lock(config["notes_vault_path"])
+    lock = get_process_lock()
     try:
         with lock:
             from scripts.process_notes import process_new_notes

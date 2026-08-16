@@ -30,8 +30,9 @@ build/
 # Logs
 *.log
 
-# Mindraft runtime state (stored in notes-vault, not code repo)
-analysis/
+# Mindraft runtime state（memory.json 存于 notes-vault/.mindraft/，不在本 repo）
+logs/
+.mindraft.lock
 notes-vault/
 
 # Generated dashboard data

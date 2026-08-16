@@ -50,7 +50,7 @@ note_filter:
 # 日志配置
 logging:
   level: INFO                         # DEBUG | INFO | WARNING | ERROR
-  file: analysis/process_log.jsonl    # 日志输出路径（相对于 notes_vault_path）
+  file: logs/process_log.jsonl        # 日志输出路径（相对于 mindraft 项目根目录）
 
 # Token 估算方式
 token_estimation: char_ratio           # char_ratio | tiktoken

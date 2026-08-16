@@ -37,7 +37,7 @@ description: |
 
 4. **解析日志与输出**
    - 如果命令失败，记录错误信息、traceback 和退出码。
-   - 如果命令成功，检查 `analysis/process_log.jsonl`（如存在）是否有 ERROR 或 WARNING 级别日志。
+   - 如果命令成功，检查 `logs/process_log.jsonl`（如存在）是否有 ERROR 或 WARNING 级别日志。
 
 5. **生成报告**
    - 按下方模板输出，明确给出"通过"/"失败"结论和下一步建议。
@@ -63,7 +63,7 @@ description: |
 ### 2. `python[3] run.py --analyze`（全部 AI 分析：处理新笔记 + 生成 dashboard 数据，不启动服务）
 - ...
 
-## 日志检查（analysis/process_log.jsonl）
+## 日志检查（logs/process_log.jsonl）
 - ERROR 数量：N
 - WARNING 数量：N
 - 关键日志摘录：...

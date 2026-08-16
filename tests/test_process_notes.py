@@ -78,7 +78,7 @@ def test_process_single_note_writes_ai_note_and_memory():
         assert "source: raw_notes/2026-07-26.md" in ai_content
         assert "# Productive Friday" in ai_content
 
-        memory_path = vault / "analysis" / "memory.json"
+        memory_path = vault / ".mindraft" / "memory.json"
         assert memory_path.exists(), "memory.json not created"
         memory = json.loads(memory_path.read_text(encoding="utf-8"))
 
@@ -104,7 +104,7 @@ def test_dry_run_does_not_write_files():
             process_new_notes(config, dry_run=True)
 
         assert not (vault / "ai_notes").exists()
-        assert not (vault / "analysis" / "memory.json").exists()
+        assert not (vault / ".mindraft" / "memory.json").exists()
 
 
 def test_skipped_note_marked_processed():
@@ -117,7 +117,7 @@ def test_skipped_note_marked_processed():
         with patch("scripts.process_notes.get_llm", return_value=fake_llm):
             process_new_notes(config, dry_run=False)
 
-        memory_path = vault / "analysis" / "memory.json"
+        memory_path = vault / ".mindraft" / "memory.json"
         memory = json.loads(memory_path.read_text(encoding="utf-8"))
         assert "short.md" in memory["meta"]["processed_notes"]
         assert not (vault / "ai_notes").exists()
@@ -141,7 +141,7 @@ def test_failed_note_not_marked_processed_and_retries():
         with patch("scripts.process_notes.get_llm", return_value=fake_llm):
             process_new_notes(config, dry_run=False)
 
-        memory_path = vault / "analysis" / "memory.json"
+        memory_path = vault / ".mindraft" / "memory.json"
         memory = json.loads(memory_path.read_text(encoding="utf-8"))
         assert "good.md" in memory["meta"]["processed_notes"]
         assert "bad.md" not in memory["meta"]["processed_notes"]
@@ -169,7 +169,7 @@ def test_transient_failure_recovers_on_retry():
             process_new_notes(config, dry_run=False)
 
         assert call_count["n"] == 2, f"expected 1 retry, got {call_count['n']} calls"
-        memory = json.loads((vault / "analysis" / "memory.json").read_text(encoding="utf-8"))
+        memory = json.loads((vault / ".mindraft" / "memory.json").read_text(encoding="utf-8"))
         assert "flaky.md" in memory["meta"]["processed_notes"]
 
 

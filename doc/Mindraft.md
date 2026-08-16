@@ -141,7 +141,7 @@ Mindraft 作为旁观者，以局外人的眼光重新审视这些文字，
 │                          │     │                              │
 │   raw_notes/             │◄────│  config.yml 配置路径          │
 │   ai_notes/              │     │  scripts/ 读写此目录          │
-│   analysis/              │     │                              │
+│   .mindraft/ (隐藏目录)   │     │  logs/ 运行日志               │
 └──────────────────────────┘     └──────────────────────────────┘
          ↑
     GitHub 同步
@@ -168,17 +168,17 @@ notes-vault/
 │       ├── workout/
 │       └── cooking/
 │
-└── analysis/                     # AI 分析产物（非笔记）
+└── .mindraft/                    # AI 分析产物（隐藏目录，非笔记；ADR-014）
     ├── memory.json               # 蒸馏记忆（核心状态文件）
     ├── relationships.json        # 笔记关联图谱
     ├── tags.json                 # 全局 tag 汇总
     ├── avatar_data.json          # 用户画像数据契约
-    ├── process_log.jsonl         # 处理日志（JSONL 格式）
-    ├── .mindraft.lock            # 进程锁文件（运行时自动创建）
     └── snapshots/                # 每周快照（Road Map 数据源）
         ├── 2026-W24.json
         └── 2026-W23.json
 ```
+
+> 运行日志与进程锁不在笔记仓库：`mindraft/logs/process_log.jsonl`、`mindraft/.mindraft.lock`。
 
 ### Repo 2：mindraft
 
@@ -225,7 +225,7 @@ mindraft/
 │       ├── stats.json             # 字数 / 日历数据
 │       ├── summaries.json         # 每日摘要
 │       ├── roadmap.json           # 周快照历史
-│       └── avatar_data.json       # 画像数据（从 analysis/ 同步）
+│       └── avatar_data.json       # 画像数据（从 .mindraft/ 同步）
 │
 ├── config.yml                    # 配置文件
 ├── run.py                        # 一键入口
@@ -674,7 +674,7 @@ Transformation（稀有，标志性人生转变）
 这是整个画像系统唯一稳定的接口。无论渲染方式怎么变，此数据结构不变。字段只增不减，新渲染器需要更多数据时追加字段，不改动现有字段。
 
 ```json
-// analysis/avatar_data.json
+// .mindraft/avatar_data.json
 
 {
   "generated_at": "2026-06-15",

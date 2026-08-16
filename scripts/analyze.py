@@ -10,7 +10,7 @@ import yaml
 from scripts.llm_factory import get_llm
 from scripts.prompts import DASHBOARD_SUMMARY_ROLE
 from scripts.schemas import DASHBOARD_SUMMARY_SCHEMA, validate_llm_output
-from scripts.utils import safe_write_json, load_config
+from scripts.utils import safe_write_json, load_config, get_memory_path
 
 logger = logging.getLogger("mindraft")
 
@@ -34,7 +34,7 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
     vault = Path(config["notes_vault_path"]).expanduser()
     dashboard_data_dir = DASHBOARD_DATA_DIR
 
-    memory = _load_memory(vault)
+    memory = _load_memory(get_memory_path(config))
     ai_notes_dir = vault / "ai_notes"
 
     memory_hash = _memory_hash(memory)
@@ -97,9 +97,8 @@ def _dashboard_up_to_date(dashboard_data_dir: Path, memory_hash: str) -> bool:
     return existing.get("memory_hash") == memory_hash
 
 
-def _load_memory(vault: Path) -> dict:
-    """读取 notes-vault/analysis/memory.json，不存在则返回空结构。"""
-    memory_path = vault / "analysis" / "memory.json"
+def _load_memory(memory_path: Path) -> dict:
+    """读取 {notes_vault}/.mindraft/memory.json，不存在则返回空结构。"""
     if not memory_path.exists():
         logger.warning("memory.json 不存在，使用空记忆结构生成 dashboard")
         return {
