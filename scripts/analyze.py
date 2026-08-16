@@ -1,4 +1,5 @@
 # scripts/analyze.py
+import hashlib
 import json
 import logging
 from datetime import datetime
@@ -16,20 +17,30 @@ logger = logging.getLogger("mindraft")
 DOMAINS = ["work", "life", "growth", "wellbeing", "identity"]
 FALLBACK_DAILY_INSIGHT = "今日洞察生成失败，请稍后重试。"
 
+DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
+
 
 def generate_dashboard_data(config: dict, dry_run: bool = False):
     """
     生成 Dashboard 所需数据并写入 mindraft/dashboard/data/。
+
+    memory 未变化且数据文件齐全时直接跳过（不调 LLM、不重写文件）；
+    需要强制重新生成时使用 run.py --rebuild。
 
     Args:
         config: 加载后的 config.yml 配置。
         dry_run: 为 True 时调用 LLM 但不写入文件。
     """
     vault = Path(config["notes_vault_path"]).expanduser()
-    dashboard_data_dir = Path(__file__).parent.parent / "dashboard" / "data"
+    dashboard_data_dir = DASHBOARD_DATA_DIR
 
     memory = _load_memory(vault)
     ai_notes_dir = vault / "ai_notes"
+
+    memory_hash = _memory_hash(memory)
+    if not dry_run and _dashboard_up_to_date(dashboard_data_dir, memory_hash):
+        logger.info("memory 未变化，dashboard 数据已是最新，跳过生成（--rebuild 可强制重建）")
+        return
 
     recent_notes = _build_recent_notes(memory, ai_notes_dir)
     stats = _build_stats(memory, ai_notes_dir)
@@ -40,6 +51,7 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
     config_json = {
         "dashboard_title": "Mindraft",
         "version": "0.2.0",
+        "memory_hash": memory_hash,
         "data_files": {
             "summaries": "data/summaries.json",
             "stats": "data/stats.json",
@@ -62,6 +74,27 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
     safe_write_json(str(dashboard_data_dir / "config.json"), config_json)
 
     logger.info("Dashboard 数据已生成到 %s", dashboard_data_dir)
+
+
+def _memory_hash(memory: dict) -> str:
+    """memory 内容的稳定哈希，用于判断 dashboard 数据是否需要重新生成。"""
+    canonical = json.dumps(memory, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _dashboard_up_to_date(dashboard_data_dir: Path, memory_hash: str) -> bool:
+    """dashboard/data 已基于当前 memory 生成且数据文件齐全时返回 True。"""
+    config_path = dashboard_data_dir / "config.json"
+    if not config_path.exists():
+        return False
+    data_files = ["summaries.json", "stats.json", "recent_notes.json"]
+    if any(not (dashboard_data_dir / name).exists() for name in data_files):
+        return False
+    try:
+        existing = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return existing.get("memory_hash") == memory_hash
 
 
 def _load_memory(vault: Path) -> dict:

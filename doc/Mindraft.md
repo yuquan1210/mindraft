@@ -1147,7 +1147,7 @@ run.py 执行
 | 命令 | 行为 |
 |------|------|
 | `python run.py` | 完整流程：处理新笔记（已处理的跳过，上次失败的重试）→ 生成 dashboard 数据 → 启动服务并自动打开浏览器 |
-| `python run.py --analyze` | 执行全部 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务 |
+| `python run.py --analyze` | 执行全部 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务；memory 未变化且数据文件齐全时跳过生成（零 LLM 调用），`--rebuild` 可强制重建 |
 | `python run.py --dashboard` | 只启动本地服务器并自动打开浏览器，不做任何分析 |
 | `python run.py --rebuild` | 清空全部分析结果（`ai_notes/`、`memory.json`、`dashboard/data/*.json`、`process_log.jsonl`），从头重新分析并走完整流程；`--rebuild --analyze` 则只重建不启动服务 |
 | `python run.py --dry-run` | 干跑：调用全部 LLM（笔记处理 + analyze）但不写入任何文件、不启动服务 |

@@ -49,7 +49,7 @@ mindraft/
 ```bash
 pip install -r requirements.txt   # 安装依赖（可选：anthropic、tiktoken）
 python run.py                     # 完整流程：处理新笔记 → 生成 dashboard 数据 → 启动服务并打开浏览器
-python run.py --analyze           # 只做 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务
+python run.py --analyze           # 只做 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务；memory 未变化时跳过生成
 python run.py --dashboard         # 只启动 dashboard 服务并打开浏览器，不做任何分析
 python run.py --rebuild           # 清空全部分析结果（ai_notes/、memory.json、dashboard 数据、process_log）后走完整流程
 python run.py --dry-run           # 干跑：调 LLM 但不写文件、不启动服务

@@ -536,3 +536,29 @@ mindraft/
 - 临时 vault 单测 `reset_analysis_state`：四类产物全部删除、二次调用返回空列表。
 - `pytest` 5 个测试全过；`python run.py --help` 输出新参数。
 - 测试期间误删了真实 `dashboard/data/*.json`（reset 函数硬编码项目内 dashboard 目录），已通过 `python run.py --analyze` 重新生成恢复。
+
+
+---
+
+### dashboard 数据按 memory 哈希跳过重复生成（2026-08-16）
+
+**背景**
+`run.py --analyze` 每次无条件调 LLM 重新生成五域摘要和每日一句，即使 memory 完全没变——既浪费 LLM 调用，同样的数据文案还每次漂移。用户确认「每日一句」的定位是「基于当前记忆的一句洞察」而非每天强制翻新，因此 memory 不变时 dashboard 数据不应重新生成。
+
+**完成内容**
+1. `scripts/analyze.py`：
+   - 新增 `_memory_hash()`：对 memory 字典做规范化 JSON（sort_keys）后的 sha256。
+   - 新增 `_dashboard_up_to_date()`：`dashboard/data/config.json` 中的 `memory_hash` 与当前一致且 `summaries/stats/recent_notes` 三个数据文件齐全时视为已是最新。
+   - `generate_dashboard_data()` 在加载 memory 后先比对哈希，未变化则直接返回（零 LLM 调用、不重写文件）；dry-run 不受影响（始终调用 LLM 验证 pipeline）。
+   - `config.json` 新增 `memory_hash` 字段；dashboard 数据目录提取为模块常量 `DASHBOARD_DATA_DIR`（便于测试 patch）。
+2. 新增 `tests/test_analyze.py`：memory 未变跳过、memory 变化重新生成、数据文件缺失重新生成三个用例。
+3. 文档同步：`AGENTS.md`（常用命令注释）、`doc/Mindraft.md`（§10 命令表）。
+
+**主要决策**
+- 哈希只覆盖 memory 内容，不纳入 prompt/skill 版本：prompt 调整后用 `--rebuild` 强制重建即可，第一版保持简单。
+- `processed_notes` 在 memory 内，新笔记处理完哈希自然变化，无需额外监听笔记文件。
+- `ai_notes/` 被手动删改不会触发重建（memory 未变）；ai_notes 是代码生成物，正常流程下不存在这个场景。
+
+**验证结果**
+- `pytest` 8 个测试全过（含 3 个新用例）。
+- 真实 vault 端到端：第一次 `--analyze` 因旧 config.json 无 `memory_hash` 正常重新生成；紧接着第二次 memory 未变，日志输出「跳过生成」，零 LLM 调用。
