@@ -163,7 +163,7 @@ notes-vault/
 │   │   ├── epic_and_cards/
 │   │   ├── tips/
 │   │   └── publish/
-│   ├── study/
+│   ├── growth/
 │   └── life/
 │       ├── workout/
 │       └── cooking/
@@ -221,11 +221,12 @@ mindraft/
 │   │   ├── animated_sprite_renderer.js
 │   │   └── game_renderer.js          # Phase 3
 │   └── data/                     # analyze.py 输出，JS 直接读取
-│       ├── config.json            # 前端配置（从 config.yml 导出）
+│       ├── config.json            # 前端配置（含 memory_hash）
 │       ├── stats.json             # 字数 / 日历数据
 │       ├── summaries.json         # 每日摘要
-│       ├── roadmap.json           # 周快照历史
-│       └── avatar_data.json       # 画像数据（从 .mindraft/ 同步）
+│       ├── recent_notes.json      # 最近处理笔记列表
+│       ├── roadmap.json           # 周快照历史（Phase 3 规划）
+│       └── avatar_data.json       # 画像数据（Phase 4 规划）
 │
 ├── config.yml                    # 配置文件
 ├── run.py                        # 一键入口
@@ -278,7 +279,8 @@ scripts/llm/
 ├── base.py          # 抽象基类，定义统一接口
 ├── kimi.py          # Kimi 实现（OpenAI 兼容接口）
 ├── openai.py        # OpenAI 实现
-└── anthropic.py     # Claude 实现
+├── anthropic.py     # Claude 实现
+└── deepseek.py      # DeepSeek 实现
 ```
 
 → 实现代码：`scripts/llm/` 与 `scripts/llm_factory.py`
@@ -316,6 +318,8 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 | `generate_avatar_data` | `analysis_style` |
 | `compress_memory` | `memory_compression` |
 
+> 当前实现中仅 `process_note` 经过 `skill_loader` 挂载 skill；dashboard 摘要直接使用 `DASHBOARD_SUMMARY_ROLE`，不挂 skill。表中其余 operation（`enrich_with_link`、`generate_profile`、`generate_mbti_description`、`generate_avatar_data`、`compress_memory`）为 Phase 3-5 规划，代码中尚不存在。
+
 → 实现代码：`scripts/skill_loader.py`
 
 ---
@@ -325,11 +329,10 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 #### 流程概览
 
 ```
-run.py
+run.py（在此获取进程锁，防止并发执行；--dashboard 模式不获取）
   │
   └─► process_notes.py
         │
-        ├── 获取进程锁（防止并发执行）
         ├── 扫描 raw_notes/
         ├── 对比 memory.processed_notes（找出未处理的笔记）
         │
@@ -339,9 +342,8 @@ run.py
         │     · 仅包含无法理解的代码片段（无自然语言文字）
         │     → 标记为已处理，记录跳过原因，不调用 LLM
         │
-        ├── [分组] 将未跳过的笔记分为两类：
-        │     · 短笔记（≤ batch_char_threshold 字符）→ 合并为一批，一次 LLM 调用
-        │     · 长笔记 → 各自独立处理
+        ├── [分组] 当前逐篇独立处理；
+        │     短笔记合并为一批（一次 LLM 调用）是 Phase 1 延后项
         │
         └── for each 组（按日期升序）：
               │
@@ -352,31 +354,30 @@ run.py
               ├── 5. 解析 JSON 返回：
               │       domain + subcategory（join 为 category）,
               │       tags, summary,
-              │       rewritten_content, questions,
+              │       rewritten_content,
               │       memory_updates
+              │       （questions 字段保留在契约中，当前代码不消费；
+              │         追问实际由 note_style 规则以 <!-- ❓ --> 注释内嵌正文实现）
               │
-              ├── 6. 写入 ai_notes/{category}/{filename}.md
+              ├── 6. 写入 ai_notes/{category}/{title-slug}.md（重名追加 -2、-3）
               ├── 7. apply_memory_updates() → 更新 active_memory
-              ├── 8. 更新 relationships.json
-              ├── 9. 将笔记名加入 memory.processed_notes
-              ├── 10. 原子写入 memory.json（逐篇 checkpoint，确保断点可恢复）
+              ├── 8. 将笔记名加入 memory.processed_notes
+              ├── 9. 原子写入 memory.json（逐篇 checkpoint，确保断点可恢复）
               │
-              └── 11. if token_estimate(active_memory) > threshold:
-                          compress_memory()
+              └── 10. if token_estimate(active_memory) > threshold:
+                          compress_memory()（Phase 3 规划，当前未实现）
 ```
 
 #### AI 处理后笔记的 frontmatter 格式
 
 ```markdown
 ---
-original: raw_notes/2026-06-15.md
-processed_at: 2026-06-15
+title: "Auth Redesign Notes"
+processed_at: 2026-06-15T14:30:00
 category: work/daily
 tags: [backend, sprint]
 summary: "今天完成了登录模块的代码审查，发现权限设计有漏洞"
-related:
-  - work/epic_and_cards/auth-redesign.md
-  - work/tips/permission-patterns.md
+source: raw_notes/2026-06-15.md
 ---
 
 ...（AI 对原始笔记的清晰重写版本：结构化表达，补充必要背景知识）...
@@ -386,15 +387,18 @@ related:
 <!-- ❓ 待补充：这里提到的"权限漏洞"具体是哪种场景？AI 无法从现有上下文推断，请补充更多信息。 -->
 ```
 
+> frontmatter 字段与 `write_ai_note()` 实际输出一致；`related`（关联笔记列表）属 Phase 5 规划，当前不写入。
+
 #### Tag 创建规则
 
 ```
 候选阶段：每篇笔记处理时，AI 提出 ≤3 个候选 tag
-          存入 memory.tag_candidates，status: "pending"
+          → 立即写入该篇 ai_note 的 frontmatter
+          → 同时存入 memory.tag_candidates 累计 count，status: "pending"
 
-升级规则：当 tag_candidates 中某个 tag 的 count ≥ 3
+升级规则（Phase 3 规划，当前未实现）：
+          当 tag_candidates 中某个 tag 的 count ≥ 3
           → status 升级为 "active"
-          → 写入对应的所有笔记 frontmatter
 
 目的：防止 tag 爆炸，确保每个 tag 都有足够的代表性
 ```
@@ -408,15 +412,14 @@ AI 对原始笔记的核心处理是**重写**，而非仅整理或追加。
   · 空文件 → 跳过，标记为已处理，记录跳过原因
   · 字符数 < min_meaningful_chars (20) → 跳过
   · 去除代码块后无自然语言文字（< 10 字符）→ 跳过
-  · 短笔记（≤ 200 字符）→ 合并为一批（最多 5 篇），一次 LLM 调用处理
-  · 长笔记 → 各自独立处理
+  · 当前所有有效笔记逐篇独立处理；短笔记（≤ 200 字符）合并批处理（最多 5 篇、一次 LLM 调用）是 Phase 1 延后项，尚未实现
 
 重写目标：将潦草、碎片化的原始笔记，重写为清晰、结构化、易读的版本
 
 重写原则：
   · 保留原文所有核心信息，补充可从上下文或 AI 知识合理推断的背景
   · 如涉及代码/技术内容，格式化为规范的 markdown 代码块
-  · 笔记中的 URL → 抓取页面内容 → 生成摘要 → 以引用块追加
+  · 笔记中的 URL → 抓取页面内容 → 生成摘要 → 以引用块追加（Phase 5 规划，当前仅作为 skill 规则文本存在，无抓取代码）
     格式：> 📎 [页面标题](url)：内容摘要
 
 无法推断内容的处理（禁止幻觉）：
@@ -438,7 +441,7 @@ AI 对原始笔记的核心处理是**重写**，而非仅整理或追加。
 
 ```
 LLM 每次处理笔记时，只看两样东西：
-  ① active_memory（压缩的历史记忆，~600 tokens）
+  ① active_memory（压缩的历史记忆，规模由 config 阈值控制，默认 1500 tokens）
   ② 当前这一篇新笔记（~100-200 字）
 
 处理后更新 active_memory，而不是堆积原文
@@ -452,7 +455,7 @@ memory.json
 │
 ├── active_memory  (热层)
 │     · 每次处理笔记时发给 LLM
-│     · 始终保持压缩，控制在 ~800 tokens 内
+│     · 超过阈值（config: memory.active_memory_token_threshold，默认 1500 tokens）时压缩
 │     · 内容只增不减（压缩 ≠ 删除）
 │
 └── history_archive  (冷层)
@@ -481,6 +484,9 @@ memory.json
     "work": {
       "current_focus": "登录模块重构，卡在权限设计上",
       "ongoing_projects": ["认证系统", "dashboard迁移"],
+      "goals": [],
+      "energy_pattern": "",
+      "stress_sources": [],
       "recurring_signals": [
         "容易在细节上花过多时间",
         "喜欢在写代码前先理清思路"
@@ -489,14 +495,35 @@ memory.json
     },
     "life": {
       "current_routines": ["早上健身", "周末做饭"],
+      "interests_observed": ["电影", "编程", "烹饪"],
+      "social_connections": [],
+      "places": [],
+      "important_people": [],
       "recurring_signals": ["睡眠不规律是持续困扰"],
-      "interests_observed": ["电影", "编程", "烹饪"]
+      "recent_mood_trend": ""
     },
-    "personality_signals": [
-      "偏内向，独处时恢复能量",
-      "目标感强，对自身完美主义有自我觉察",
-      "表达方式直接，情绪起伏不大"
-    ]
+    "growth": {
+      "learning_topics": ["系统设计"],
+      "active_skills": [],
+      "challenges": [],
+      "recurring_signals": []
+    },
+    "wellbeing": {
+      "physical_patterns": [],
+      "mental_patterns": [],
+      "recovery_activities": ["健身"],
+      "recurring_signals": []
+    },
+    "identity": {
+      "core_traits": [
+        "偏内向，独处时恢复能量",
+        "目标感强，对自身完美主义有自我觉察"
+      ],
+      "values": [],
+      "self_perception": [],
+      "mbti_hints": [],
+      "recurring_signals": []
+    }
   },
 
   "tag_candidates": {
@@ -511,14 +538,11 @@ memory.json
       "trigger": "compression",
       "note_count_at_time": 31,
       "snapshot": {
-        "work": {
-          "current_focus": "...",
-          "ongoing_projects": ["..."],
-          "recurring_signals": ["..."],
-          "recent_mood_trend": "..."
-        },
+        "work": { "current_focus": "...", "ongoing_projects": ["..."] },
         "life": {},
-        "personality_signals": []
+        "growth": {},
+        "wellbeing": {},
+        "identity": {}
       }
     }
   ]
@@ -529,7 +553,7 @@ memory.json
 
 LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE 直接忽略：
 - `APPEND_TO`：向指定数组追加新元素（语义去重后追加）
-- `SET_IF_NEW`：只有字段不存在时才写入
+- `SET_IF_NEW`：字段不存在或值为空（空串/空列表）时才写入
 
 **System prompt 中写死的约束：**
 
@@ -539,21 +563,23 @@ LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE
 
 → 实现代码：`scripts/process_notes.py`、`scripts/note_filter.py`、`scripts/schemas.py`、`scripts/prompts.py`
 
-#### 压缩触发与执行
+#### 压缩触发与执行（Phase 3 规划，当前未实现）
 
-压缩分三步：① 将 active_memory 完整归档至 history_archive（永久保留）→ ② 调用 LLM 压缩（精简表达，不丢信号）→ ③ 热层 token 降回 ~600。
+压缩分三步：① 将 active_memory 完整归档至 history_archive（永久保留）→ ② 调用 LLM 压缩（精简表达，不丢信号）→ ③ 热层 token 降回阈值 × `memory.compression_target_ratio`（默认 0.55）。
 
 #### 各阶段记忆状态预估
 
 | 阶段 | active_memory | history_archive | 每次 LLM 输入 token |
 |------|--------------|-----------------|-------------------|
-| 第 1-20 篇笔记 | 逐渐增长 | 空 | ~300-800 |
-| 触发第一次压缩 | 重置 ~600 | 1 条归档 | ~800 |
-| 第 500 篇笔记 | 始终 ~600 | N 条归档 | 恒定 ~800 |
+| 第 1-20 篇笔记 | 逐渐增长 | 空 | ~300-1500 |
+| 触发第一次压缩 | 降至阈值 × 0.55 | 1 条归档 | 阈值内 |
+| 第 500 篇笔记 | 稳定在阈值内 | N 条归档 | 恒定，阈值内 |
 
 ---
 
 ### 5.5 笔记关联关系
+
+> 本节整体为 Phase 5 规划，当前代码不写入 `related` frontmatter 与 `relationships.json`。注意示例中的文件名（如 `2026-06-15.md`）是早期设计，实际 ai_notes 文件名为 title slug。
 
 #### 关联写入格式
 
@@ -906,7 +932,7 @@ run.py 执行
     │
     ├─► [处理] for each 组（按日期升序）
     │     │
-    │     ├── 加载 active_memory（~600 tokens）
+    │     ├── 加载 active_memory（规模由 config 阈值控制，默认 1500 tokens）
     │     ├── build_system_prompt("process_note", ...)
     │     ├── LLM 调用（active_memory + 笔记原文）
     │     ├── JSON Schema 校验返回结果
@@ -915,19 +941,20 @@ run.py 执行
     │     │     ├── tags            → 更新 tag_candidates
     │     │     ├── summary         → 写入 frontmatter
     │     │     ├── rewritten_content → 写入笔记正文（重写版本）
-    │     │     ├── questions       → 以注释嵌入笔记，要求作者补充
+    │     │     ├── questions       → 契约保留但当前不消费；追问实际以 <!-- ❓ --> 注释内嵌正文
     │     │     └── memory_updates  → apply_memory_updates()
     │     │
-    │     ├── 写入 ai_notes/{category}/{filename}.md
+    │     ├── 写入 ai_notes/{category}/{title-slug}.md
     │     ├── 原子写入 memory.json（逐篇 checkpoint）
-    │     └── if token > threshold → compress_memory()
+    │     └── if token > threshold → compress_memory()（Phase 3 规划，未实现）
     │
     ├─► [分析] analyze.py
     │     ├── 从 memory.json 生成 dashboard/data/stats.json
     │     ├── 生成 summaries.json
-    │     ├── 生成 roadmap.json（from history_archive + snapshots）
-    │     ├── 生成 profile.json（MBTI 风格描述）
-    │     ├── 生成 avatar_data.json（画像数据契约）
+    │     ├── 生成 recent_notes.json（最近处理笔记，processed_at 取文件 mtime）
+    │     ├── 生成 roadmap.json（from history_archive + snapshots）（Phase 3 规划）
+    │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 规划）
+    │     ├── 生成 avatar_data.json（画像数据契约）（Phase 4 规划）
     │     │     └── if renderer == "pixel_art":
     │     │             调用 Replicate API 生成图片
     │     │             将 image_url 写入 avatar_data
@@ -1101,6 +1128,7 @@ run.py 执行
 - 链接抓取与摘要补充（URL → 页面内容 → LLM 摘要 → 追加到笔记）
 - Dashboard：关系网络图可视化
 - 追问标记交互处理（用户回答追问 → 补充到对应笔记）
+  - 已确认延后（2026-08-16）：追问闭环不作为 MVP 目标；`questions` 字段保留在 LLM 输出契约中，实现闭环时一并消费（渲染进笔记 + 供 dashboard 展示待回答列表），当前追问由 note_style 的 `<!-- ❓ -->` 内嵌注释承载
 
 **验收标准**
 - 包含 URL 的笔记，ai_notes 中有 `> 📎 AI补充` 摘要追加

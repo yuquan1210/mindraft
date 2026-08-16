@@ -41,7 +41,6 @@ skills:
 
 # 笔记预筛选
 note_filter:
-  skip_empty: true                    # 跳过空文件
   min_meaningful_chars: 20            # 低于此字符数视为无意义笔记
   batch_short_notes: false            # Phase 1 不做 batching，未来优化项
   batch_max_notes: 5                  # 单次批量处理最大笔记数（未来使用）

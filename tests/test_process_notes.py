@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -47,7 +48,6 @@ def _make_config(vault_path: Path) -> dict:
             "tagging": {"enabled": True},
         },
         "note_filter": {
-            "skip_empty": True,
             "min_meaningful_chars": 20,
             "batch_short_notes": False,
         },
@@ -77,6 +77,9 @@ def test_process_single_note_writes_ai_note_and_memory():
         assert "---" in ai_content
         assert "source: raw_notes/2026-07-26.md" in ai_content
         assert "# Productive Friday" in ai_content
+        # frontmatter：processed_at 为完整时间戳，tags 为 inline array
+        assert re.search(r"processed_at: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'", ai_content)
+        assert "tags: [auth-system, refactoring]" in ai_content
 
         memory_path = vault / ".mindraft" / "memory.json"
         assert memory_path.exists(), "memory.json not created"

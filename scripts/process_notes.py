@@ -219,6 +219,22 @@ def apply_memory_updates(active_memory: dict, updates: list):
             logger.warning(f"已忽略一条记忆更新：action={action} 非法（只允许 APPEND_TO / SET_IF_NEW）")
 
 
+class _FlowList(list):
+    """标记类：强制 YAML 以 flow 风格（inline array）序列化，用于 frontmatter tags。"""
+
+
+class _FrontmatterDumper(yaml.SafeDumper):
+    """frontmatter 专用 Dumper，避免污染全局 yaml 配置。"""
+
+
+_FrontmatterDumper.add_representer(
+    _FlowList,
+    lambda dumper, data: dumper.represent_sequence(
+        "tag:yaml.org,2002:seq", data, flow_style=True
+    ),
+)
+
+
 def write_ai_note(vault: Path, raw_name: str, result: dict):
     """将重写后的笔记写入 ai_notes/ 目录。"""
     category = result["category"]
@@ -237,15 +253,17 @@ def write_ai_note(vault: Path, raw_name: str, result: dict):
 
     frontmatter = {
         "title": title,
-        "date": today_iso(),
+        "processed_at": datetime.now().isoformat(timespec="seconds"),
         "category": category,
-        "tags": result.get("tags", []),
+        "tags": _FlowList(result.get("tags", [])),
         "summary": result.get("summary", ""),
         "source": f"raw_notes/{raw_name}",
     }
 
     content = "---\n"
-    content += yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
+    content += yaml.dump(
+        frontmatter, Dumper=_FrontmatterDumper, allow_unicode=True, sort_keys=False
+    )
     content += "---\n\n"
     content += result["rewritten_content"]
 

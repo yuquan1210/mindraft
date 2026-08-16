@@ -599,3 +599,31 @@ mindraft/
 
 **验证结果**
 - `pytest` 8 个测试全过。
+
+
+---
+
+### frontmatter 字段修正 + 设计/实现一致性审计（2026-08-16）
+
+**背景**
+用户指出 ai_notes frontmatter 的 `date` 字段表意不明（Obsidian 生态中 `date` 通常指笔记内容日期，而代码填的是 AI 处理日期）。查证发现 `doc/Mindraft.md` 设计文档本来就写的 `processed_at`，是代码实现跑偏。用户要求一并排查其他设计与实现不一致。
+
+**完成内容**
+1. `write_ai_note()`：`date: today_iso()` → `processed_at: datetime.now().isoformat(timespec="seconds")`（完整时间戳）；tags 通过自定义 `_FrontmatterDumper` + `_FlowList` 强制 flow 序列化，输出 inline array（`tags: [a, b]`），与文档示例一致，不污染全局 yaml 配置。已有 ai_notes 不迁移。
+2. 测试新增断言：`processed_at` 时间戳格式、tags inline 格式。
+3. 全量审计 `doc/Mindraft.md` 对照 `scripts/` 实现，按「代码是唯一事实源」修复文档（未实现的标注所属 Phase）：
+   - frontmatter 示例：`original` → `source`、补 `title`、`processed_at` 改完整时间戳、`related` 标注 Phase 5。
+   - Tag 创建规则：改为「tags 立即写入 frontmatter + 计入 tag_candidates」，count≥3 升级标注 Phase 3；`skills/tagging.yml` 第 9 条规则同步改口径。
+   - memory.json 结构示例补齐五域；history_archive snapshot 示例同步五域。
+   - questions 字段：文档改为「契约保留但代码不消费，追问由 note_style 的 `<!-- ❓ -->` 内嵌注释实现」。
+   - ai_notes 文件名：文档统一为 title slug（重名追加 -2、-3）。
+   - §5.2 skill 表：注明当前仅 process_note 经 skill_loader 挂载，其余 operation 为 Phase 3-5 规划。
+   - 其余：§5.1 补 deepseek.py、目录树 `study/` → `growth/`、dashboard/data 补 `recent_notes.json`、SET_IF_NEW 补充空值覆写语义、进程锁位置改为 run.py、active_memory token 数统一为 config 阈值（默认 1500）、短笔记批量/URL 抓取/记忆压缩/§5.5 笔记关联均标注所属 Phase。
+
+**主要决策**
+- tags 序列化换行风格并非刻意选择，是 PyYAML `yaml.dump()` 默认 block 风格的产物；YAML 语义等价、Obsidian 均识别，按文档统一为 inline 仅为观感一致。
+- questions 字段保留在 schema/prompt 中不删除（用户已确认）：追问闭环不作为 MVP 目标，延后到后期补充功能时一并实现（届时由代码消费 questions：渲染进笔记 + dashboard 展示待回答列表）；当前追问由 note_style 的 `<!-- ❓ -->` 内嵌注释承载。已同步到 `doc/Mindraft.md` Phase 5 章节。
+- `note_filter.skip_empty` 配置项无代码读取（空文件无条件跳过），属无效开关——用户已确认删除，已从 `config.yml` 与测试中移除。
+
+**验证结果**
+- `pytest` 8 个测试全过；`skills/tagging.yml` YAML 加载正常。

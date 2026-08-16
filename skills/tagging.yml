@@ -6,5 +6,5 @@ rules:
   - "每篇笔记最多提出 3 个候选 tag"
   - "tag 使用英文小写，多个单词用连字符，例如 system-design"
   - "tag 代表主题或领域，不代表情绪或时间，禁止使用 today / feeling-good 等"
-  - "只提候选，不直接写入笔记，由系统判断是否满足 3 篇阈值后正式创建"
+  - "tag 会由系统写入笔记 frontmatter 并计入候选统计；同一 tag 累计满 3 篇后升级为正式 tag（升级机制后续实现）"
   - "tag 长度控制在 2-4 个单词之间，避免过宽（如 work）或过窄（如 specific-meeting-2026）"
