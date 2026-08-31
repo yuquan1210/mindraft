@@ -2,7 +2,7 @@
 
 > 本文件是 AI Agent 的项目入口，每次会话自动读取。细节文档按需查阅：
 > - `doc/Mindraft.md`（产品方案与阶段设计）
-> - `doc/mindraft-log.md`（实现日志 + ADR-001~014，架构决策的唯一权威来源）
+> - `doc/mindraft-log.md`（实现日志 + ADR-001~016，架构决策的唯一权威来源）
 > - `doc/Mindraft-Vibe-Coding-Guide.md`（人机协作流程）
 
 ## 项目定位

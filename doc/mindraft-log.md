@@ -9,7 +9,7 @@
 
 **当前阶段**：Phase 2 ✅ 已完成 → Phase 3 ⬜ 未开始
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-08-16
+**最后更新**：2026-08-18
 
 ---
 
@@ -154,7 +154,7 @@
 | **决策** | 周快照生成由"如果是周末"改为"检测到跨越自然周时自动生成"，独立于记忆压缩 |
 | **理由** | 用户不一定在周末运行脚本；Road Map 在早期阶段（未触发压缩时）也需要数据支撑 |
 | **影响** | `maybe_generate_weekly_snapshot()` 比较 `last_updated` 与当前日期的 ISO 周数，跨周则生成 |
-| **状态** | ✅ 已确认 |
+| **状态** | ⚠️ 已被 ADR-016 取代（周快照并入 `history_archive`，不再写独立 `snapshots/` 文件） |
 
 ---
 
@@ -176,6 +176,17 @@
 | **决策** | 原 Phase 6「像素画形象」（Replicate API 生成 + seed 重绘）整体替换为「AI 导演的像素小人世界」，并拆分为两个 Phase：Phase 6 渲染基建（素材编目 + Kaplay.js 渲染器 + 剧本执行器，无 AI）、Phase 7 AI 导演与场景进化（Python 侧 LLM 场景生成 + 增量进化）。渲染器命名为 `pixel_world`，原 `pixel_art` / `animated_sprite` / `game` 渲染器规划作废（ADR-007 的数据契约与插件机制不变，仅渲染器集合调整） |
 | **理由** | 像素世界与 ADR-007 数据/渲染分离架构同构（场景剧本 JSON 即渲染输入）；形象延续性由「场景状态持久化 + 增量变更」天然保证，比图片重绘更稳；去掉外部图像 API 的不确定性与成本 |
 | **约束** | ① LLM 场景生成全部在 Python 侧（`analyze.py`），前端只读 `dashboard/data/scene.json`，不在浏览器调 LLM API（ADR-005 / ADR-012）；② 场景进化遵循 ADR-004：LLM 只输出对当前场景的增量变更，Genesis 全量生成仅限首次/重置；③ LLM 输出经 jsonschema 校验 + `assets_manifest.json` 素材 id 引用校验，失败重试一次后保留旧场景（ADR-009）；④ 场景状态存 `{notes_vault}/.mindraft/scene_state.json`，`safe_write_json()` 原子写入（ADR-008 / ADR-014）；⑤ 像素素材包不提交入库（版权问题），Kaplay.js vendor 到 `dashboard/vendor/` 保证离线可用 |
+| **状态** | ✅ 已确认 |
+
+---
+
+### ADR-016：统一归档（周快照并入 history_archive，取代 ADR-013）
+
+| 项 | 内容 |
+|----|------|
+| **决策** | 取消独立的 `snapshots/YYYY-WXX.json` 文件；`history_archive` 条目增加 `iso_week` 与 `trigger` 两个字段，`trigger ∈ {weekly, compression}`：跨周时追加 `weekly` 条目（纯数据拷贝，零 LLM，热层不变），压缩时追加 `compression` 条目（归档 + 热层浓缩写回）。`roadmap.json` 只从 `history_archive` 单数据源生成 |
+| **理由** | 原设计中 `history_archive` 快照与 `snapshots/*.json` 是同构数据的两份存储，roadmap 需要合并去重两类来源；统一后少一套文件、少一个写入时机、少一类合并逻辑；同时保留 ADR-013「早期未触发压缩时 Road Map 也有数据」的初衷（weekly 条目承担） |
+| **影响** | `maybe_generate_weekly_snapshot()` 改为向 `history_archive` 追加条目（仍在 analyze 入口执行，不受 memory_hash 跳过影响）；`snapshots/` 目录从设计中删除；roadmap 时间轴节点按 `archived_at` 排序，同一周允许 weekly + compression 两个节点并存，无需去重 |
 | **状态** | ✅ 已确认 |
 
 ---
@@ -251,6 +262,54 @@
 | 测试 | 全人工验收，不写前端自动化测试 |
 | ADR-013 跨周快照 | 延后到 Phase 3，与 Road Map Timeline 一起实现 |
 | 文档更新 | 同步更新 `Mindraft.md` §9/§10、`Mindraft-AI-Reference.md` §7 |
+
+### 2026-08-17 Phase 3 规划 grilling
+
+**决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 范围边界 | 以 `Mindraft.md` §9 Phase 3 为准：记忆压缩 + memory_compression.yml + tag 升级 + profile.json（MBTI 描述）+ roadmap.json + analysis_style.yml + Dashboard 两个新卡片 + ADR-013 跨周快照。**不含 Chart.js 字数图 / 活跃日历**（用户确认：非核心，继续延后） |
+| 压缩触发时机 | 每篇笔记 checkpoint 后立即检查 token 阈值并压缩（与 §5.3 流程一致，保证 LLM 输入 token 恒定） |
+| 压缩后仍超目标 | 接受现状 + 记 warning，下次超阈值再次触发；不做压缩循环 |
+| 压缩失败语义 | 归档已完成则保留归档，active_memory 保持未压缩原样，记 error，流程不中断，下次运行重试 |
+| Tag 升级 | `count ≥ 3 → status: active`，在 `update_tag_candidates()` 内升级；**只做 Dashboard 展示区分**，不注入 process_note prompt |
+| 跨周快照 vs hash 跳过 | `maybe_generate_weekly_snapshot()` 在 analyze 入口执行（纯数据拷贝，零 LLM），**不受 memory_hash 跳过影响**；hash 跳过只控制 LLM 摘要类数据 |
+| Road Map 一句话描述 | **模板生成**（从快照字段拼接），不引入新 LLM 调用 |
+| roadmap.json 数据源 | 合并 `history_archive` + `snapshots/*.json` 两类，按周排序为时间轴节点 |
+| MBTI 描述 LLM 调用 | **并入现有 summaries 那一次调用**（数据源同为 active_memory）；输出拆写 `summaries.json` + `profile.json` 两个文件（文档契约不变） |
+| summary_style.yml | Phase 3 建出并与 analysis_style.yml 一起接入 dashboard 摘要调用（改走 skill_loader）；补上 Phase 1 延后项 |
+| MBTI 数据源 | 只用 `active_memory`（ADR-002 token 恒定原则）；修正 §6「基于近 4 周笔记」的字面表述 |
+| MBTI vs 每日一句定位 | 每日一句 = 当日洞察（≤150 字）；MBTI 描述 = 基于长期记忆的性格画像段落，时间尺度不同 |
+| dry-run | 压缩与快照逻辑照常执行（含 LLM 调用），但不写入 memory.json / snapshots / dashboard 数据 |
+| 测试 | fixture mock 测试（含调低阈值触发压缩的用例）+ 真实 vault 人工验收 |
+
+**延后/待确认想法**
+
+- Chart.js 字数趋势图、CSS Grid 活跃日历继续延后（Phase 5 候选）
+- Tag 升级注入 prompt 引导 LLM 复用 active tags：延后，观察展示区分是否够用
+- Road Map 节点描述如需更有叙事感，后期可升级为 LLM 生成
+
+### 2026-08-18 Phase 3 grilling 第二轮
+
+**决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 压缩职责重定义（方案 C） | 归档保正确性（纯拷贝，「只增不减」的落点），压缩只负责热层质量。「不丢信号」不再是验收承诺：测试只断言结构合法 + token ≤ 目标，蒸馏质量靠人工抽查 |
+| 压缩写入原子性 | LLM 压缩成功后一次 `safe_write_json` 同时完成「归档追加 + 热层替换」；失败 = memory.json 无任何变化，下次运行重试。**废除 2026-08-17「归档已完成则保留归档」的失败语义**——归档与写回同属一个 memory.json，两次写入会引入「已归档未压缩」中间态与重复归档去重问题 |
+| 统一归档 | 见 ADR-016（取代 ADR-013）：`history_archive` 条目加 `iso_week` + `trigger` 字段，`snapshots/` 目录取消，roadmap 单数据源 |
+| 热层两区结构 | 原文区（最新 ~300 token，逐字保留，不参与压缩，零漂移由结构保证）+ 浓缩区（子预算 900 token，超预算时整体再浓缩） |
+| 压缩批次规则 | 触发（热层 > 1500）时原文区砍到只剩最新 300 token，其余作为一个批次、一次 LLM 调用浓缩完毕；不预估浓缩比、不多轮；仍超目标按既有决策「接受 + warning」 |
+| 漂移的定位 | 接受为特性而非缺陷：老内容允许被重复浓缩、缓慢漂移，因为人对自我的认知本就近重远轻。不可能三角（token 硬上限 / 老信号永留上下文 / 文本最多改写一次）牺牲第三者；原文区结构保证每段原文最多经历一次大损失浓缩 |
+| token 估算 | 接受粗估，不按 provider 校准：阈值本身是经验值，估算误差与阈值任意性同量级 |
+| 缺文件即生成 | analyze 入口检查 `dashboard/data/` 契约文件齐全性，缺任何一个则无视 memory_hash 跳过、强制重新生成（解决 Phase 3 上线后 `profile.json`/`roadmap.json` 首次不会生成的问题） |
+| memory_hash 口径 | 只对 `active_memory` 计算，不含 `history_archive`：归档追加不触发 summaries/MBTI 重新生成。理由是 UX 一致性——memory 没变，用户看到的内容就不该变 |
+| 可调参数 | 原文区保留 300 / 浓缩区预算 900 / 压缩阈值 1500 均入 `config.yml`，后续按实际漂移速度与调用频率调整 |
+
+**延后/待确认想法**
+
+- 压缩批次大小（300/900/1500）为初值，实现后按真实笔记数据观察调整
 
 ---
 

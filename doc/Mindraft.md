@@ -169,13 +169,10 @@ notes-vault/
 │       └── cooking/
 │
 └── .mindraft/                    # AI 分析产物（隐藏目录，非笔记；ADR-014）
-    ├── memory.json               # 蒸馏记忆（核心状态文件）
+    ├── memory.json               # 蒸馏记忆（核心状态文件，含 history_archive 统一归档）
     ├── relationships.json        # 笔记关联图谱
     ├── tags.json                 # 全局 tag 汇总
-    ├── avatar_data.json          # 用户画像数据契约
-    └── snapshots/                # 每周快照（Road Map 数据源）
-        ├── 2026-W24.json
-        └── 2026-W23.json
+    └── avatar_data.json          # 用户画像数据契约
 ```
 
 > 运行日志与进程锁不在笔记仓库：`mindraft/logs/process_log.jsonl`、`mindraft/.mindraft.lock`。
@@ -226,7 +223,7 @@ mindraft/
 │       ├── stats.json             # 字数 / 日历数据
 │       ├── summaries.json         # 每日摘要
 │       ├── recent_notes.json      # 最近处理笔记列表
-│       ├── roadmap.json           # 周快照历史（Phase 3 规划）
+│       ├── roadmap.json           # 归档历史时间轴（Phase 3 规划，ADR-016 单数据源）
 │       ├── avatar_data.json       # 画像数据（Phase 4 规划）
 │       └── scene.json             # 像素世界场景剧本（Phase 7 规划）
 │
@@ -261,6 +258,8 @@ mindraft/
 | `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic \| deepseek` |
 | `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_world` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |
+| `memory.original_zone_tokens` | 原文区保留的最新观察 token 数（不参与浓缩） | `300` |
+| `memory.condensed_zone_token_budget` | 浓缩区子预算，超出则整体再浓缩 | `900` |
 | `token_estimation` | Token 估算方式 | `char_ratio \| tiktoken` |
 | `note_filter.min_meaningful_chars` | 笔记最低有效字符数 | `20` |
 | `note_filter.batch_char_threshold` | 短笔记合并阈值 | `200` |
@@ -537,6 +536,7 @@ memory.json
   "history_archive": [
     {
       "archived_at": "2026-06-07",
+      "iso_week": "2026-W23",
       "trigger": "compression",
       "note_count_at_time": 31,
       "snapshot": {
@@ -550,6 +550,8 @@ memory.json
   ]
 }
 ```
+
+> `trigger` 取值：`compression`（压缩前的归档）/ `weekly`（检测到跨周时的纯拷贝快照，热层不变，零 LLM）。统一归档设计见 ADR-016（取代 ADR-013，不再有独立 `snapshots/` 文件）。
 
 #### 追加更新规则
 
@@ -567,7 +569,21 @@ LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE
 
 #### 压缩触发与执行（Phase 3 规划，当前未实现）
 
-压缩分三步：① 将 active_memory 完整归档至 history_archive（永久保留）→ ② 调用 LLM 压缩（精简表达，不丢信号）→ ③ 热层 token 降回阈值 × `memory.compression_target_ratio`（默认 0.55）。
+active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
+
+- **原文区**：最新的观察，逐字保留、不参与压缩，约 300 token（`memory.original_zone_tokens`）。近期观察零漂移由结构保证
+- **浓缩区**：较早观察的 LLM 浓缩产物，子预算约 900 token（`memory.condensed_zone_token_budget`）
+
+触发条件：每篇笔记 checkpoint 后检查，热层总 token 估算 > `memory.active_memory_token_threshold`（接受粗估，不按 provider 校准）。
+
+执行（一次 LLM 调用 + 一次原子写入）：
+1. 原文区只保留最新 300 token，其余作为一个批次交给 LLM 浓缩，结果追加进浓缩区（不预估浓缩比、不多轮）；
+2. 浓缩区若超出 900 token 子预算，整体再浓缩一轮——老内容允许重复浓缩、缓慢漂移，接受为特性（人对自我的认知本就近重远轻）；
+3. 向 `history_archive` 追加 `trigger: "compression"` 条目（归档），与热层替换在**同一次 `safe_write_json()` 原子写入**中完成；LLM 失败则 memory.json 无任何变化，记 error，下次运行重试。
+
+目标：热层降回阈值 × `memory.compression_target_ratio`（默认 0.55）；仍未达标则接受现状 + 记 warning，不做压缩循环。
+
+职责划分：正确性由归档保证（纯拷贝，「只增不减」的落点），压缩只负责热层质量——「不丢信号」不是验收承诺，测试断言结构合法 + token 达标，蒸馏质量人工抽查。
 
 #### 各阶段记忆状态预估
 
@@ -857,10 +873,12 @@ Hover 展示：
   - 笔记数量
   - 一句话状态描述
   - 主要 tag
-数据来源：history_archive 中的归档快照 + snapshots/*.json
+数据来源：history_archive 单数据源（ADR-016，trigger ∈ {weekly, compression}，
+          节点按 archived_at 排序，同一周允许两类节点并存）
 
-快照生成时机：检测到跨越自然周时自动生成（不依赖"周末执行"）
-早期数据保障：即使未触发过记忆压缩，周快照也会独立生成，
+快照生成时机：检测到跨越自然周时自动追加 trigger="weekly" 归档条目
+              （纯数据拷贝，零 LLM，不依赖"周末执行"）
+早期数据保障：即使未触发过记忆压缩，weekly 条目也会独立生成，
               确保 Road Map 在早期不会空白
 ```
 
@@ -947,10 +965,12 @@ run.py 执行
     │     └── if token > threshold → compress_memory()（Phase 3 规划，未实现）
     │
     ├─► [分析] analyze.py
+    │     ├── memory_hash 仅对 active_memory 计算（归档追加不触发重新生成）；
+    │     │     dashboard/data/ 契约文件缺失时无视 hash 跳过、强制重新生成
     │     ├── 从 memory.json 生成 dashboard/data/stats.json
     │     ├── 生成 summaries.json
     │     ├── 生成 recent_notes.json（最近处理笔记，processed_at 取文件 mtime）
-    │     ├── 生成 roadmap.json（from history_archive + snapshots）（Phase 3 规划）
+    │     ├── 生成 roadmap.json（from history_archive，ADR-016）（Phase 3 规划）
     │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 规划）
     │     ├── 生成 avatar_data.json（画像数据契约）（Phase 4 规划）
     │     ├── 生成像素世界场景剧本（Phase 7 规划）
@@ -959,7 +979,7 @@ run.py 执行
     │     │             写入 {vault}/.mindraft/scene_state.json
     │     ├── 导出前端配置到 dashboard/data/config.json
     │     ├── 同步 avatar_data.json / scene.json 到 dashboard/data/
-    │     └── 检测跨周 → 自动生成 snapshots/YYYY-WXX.json
+    │     └── 检测跨周 → 向 history_archive 追加 trigger="weekly" 归档条目（ADR-016）
     │
     └─► [展示] serve.py
           └── 启动 http://localhost:8080
@@ -1067,7 +1087,7 @@ run.py 执行
 - Chart.js 字数趋势图、CSS Grid 活跃日历（延后到 Phase 3/5）
 - 用户形象（Phase 4）
 - 记忆压缩、MBTI 描述、Road Map Timeline（Phase 3）
-- 跨周快照 ADR-013（延后到 Phase 3）
+- 统一归档 ADR-016（周快照并入 history_archive，延后到 Phase 3 实现）
 
 **验收标准**
 - `python run.py` 走完整流程：处理笔记、生成 dashboard 数据并自动在浏览器打开 Dashboard
@@ -1084,7 +1104,8 @@ run.py 执行
 **目标**：记忆压缩机制正常运转，Dashboard 展示更丰富的自我分析
 
 **实现内容**
-- `compress_memory()`：触发压缩时归档 active_memory、调用 LLM 压缩、更新 history_archive
+- `compress_memory()`：触发压缩时归档 active_memory（一次原子写入）、调用 LLM 浓缩原文区、治理浓缩区子预算
+- 统一归档：`history_archive` 条目化（`iso_week` + `trigger: weekly/compression`，ADR-016），跨周追加 weekly 条目
 - `memory_compression.yml` skill 文件
 - Tag 候选升级机制（count ≥ 3 → active）
 - `analyze.py` 扩展：生成 `profile.json`（MBTI 风格描述）和 `roadmap.json`
