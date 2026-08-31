@@ -774,3 +774,18 @@ mindraft/
 
 **验证结果**
 - `pytest` 11 个测试全过。
+
+
+---
+
+### memory_updates prompt 加固 + AGENTS.md git 确认规则（2026-08-31）
+
+**背景**
+拆分版全量 `--rebuild`（21 篇）后出现 4 条无效 memory_update warning：① LLM 自创路径（`life.interesting_topics`）；② 对字符串字段用 `APPEND_TO`（`recent_mood_trend`、`current_focus`）。经查 8-19 旧运行即有同类 warning，非本次拆分改动引入；但拆分后输出变长，memory_updates 作为附带任务质量可能被挤压。此类「路径非法但格式合法」的错误不触发重试，条目被静默忽略（记忆信号丢失）。用户决定只做 prompt 加固，不做代码兜底（APPEND_TO 打字符串路径自动降级为 SET_IF_NEW 的方案已提出并被否）。
+
+**完成内容**
+1. `prompts.py` `NOTE_PROCESSOR_ROLE` memory_updates 规则收紧：明确 `APPEND_TO` 只能用于标注为（字符串列表）的路径；（字符串）路径只能用 `SET_IF_NEW`；禁止自创路径。
+2. `AGENTS.md` 硬约束新增：**Git 重要操作（commit / push / 创建删除分支 / reset / rebase 等）必须经人工确认后执行**，较早的授权不延伸至后续操作。
+
+**验证结果**
+- `pytest` 11 个测试全过（prompt 变更不影响测试，仅确认无回归）。

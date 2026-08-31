@@ -62,6 +62,7 @@ python -m pytest tests/           # 测试（test_llm_real.py 需要真实 API k
 ## 硬约束
 
 - **不修改** `raw_notes/` 任何文件。
+- **Git 重要操作必须经人工确认**：`git commit`、`git push`、创建/删除分支、`git reset`、`git rebase` 等一切改变仓库状态的操作，必须先向用户说明并获得明确同意后才可执行，不得因会话中较早的授权而默认后续操作也被允许。
 - `memory.json` 等核心状态文件必须通过 `utils.safe_write_json()` 原子写入；`run.py` 启动时获取 filelock 进程锁。
 - LLM 返回必须通过 `jsonschema` 校验；失败时自动重试一次（`_call_with_retry()`），仍失败则记录日志并跳过当前组，不中断整体流程。
 - Role Prompt 必须定义在 `prompts.py`，业务代码不硬编码 system prompt。

@@ -70,4 +70,4 @@ avatar:
   home_scene: home
 
 # Dashboard 本地服务端口
-dashboard_port: 8080
+dashboard_port: 8765
