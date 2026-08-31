@@ -46,6 +46,15 @@ note_filter:
   batch_max_notes: 5                  # 单次批量处理最大笔记数（未来使用）
   batch_char_threshold: 200           # 单篇低于此字符数视为"短笔记"（未来使用）
 
+# 推荐 subcategory 词表（软约束）：LLM 拆分笔记时优先从词表中选择，
+# 词表中没有合适的才允许新建（新词会记录 warning 日志，便于后续回填词表）
+subcategory_vocabulary:
+  work: [daily, project, planning, meeting, career, collaboration, tips]
+  life: [daily, family, social, food, travel, home, finance]
+  growth: [learning, reading, coding, skills, reflection]
+  wellbeing: [exercise, sleep, diet, mental, recovery]
+  identity: [values, traits, reflection, decisions]
+
 # 日志配置
 logging:
   level: INFO                         # DEBUG | INFO | WARNING | ERROR

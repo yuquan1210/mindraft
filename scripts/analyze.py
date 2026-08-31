@@ -119,46 +119,48 @@ def _load_memory(memory_path: Path) -> dict:
 
 def _build_recent_notes(memory: dict, ai_notes_dir: Path) -> dict:
     """
-    基于 processed_notes 顺序，从 ai_notes/ 中提取最近 10 篇笔记的元数据。
+    基于 processed_notes 顺序，从 ai_notes/ 中提取最近 10 篇小笔记的元数据。
+    一篇原笔记可能拆分为多篇 ai_note（frontmatter part 标记序号），每篇各成一个条目。
     """
     processed = memory.get("meta", {}).get("processed_notes", [])
-    # 建立 source -> ai_note 路径的映射
-    source_to_ai_note = {}
+    # 建立 source -> ai_note 路径列表的映射（一篇原笔记可对应多篇）
+    source_to_ai_notes = {}
     if ai_notes_dir.exists():
-        for ai_path in ai_notes_dir.rglob("*.md"):
+        for ai_path in sorted(ai_notes_dir.rglob("*.md")):
             try:
                 frontmatter = _extract_frontmatter(ai_path.read_text(encoding="utf-8"))
                 source = frontmatter.get("source", "")
                 if source:
-                    source_to_ai_note[source] = ai_path
+                    source_to_ai_notes.setdefault(source, []).append(
+                        (frontmatter.get("part", ""), ai_path)
+                    )
             except Exception as e:
                 logger.warning(f"解析 ai_note 失败 {ai_path}: {e}")
 
     notes = []
     for raw_name in processed:
         source_key = f"raw_notes/{raw_name}"
-        ai_path = source_to_ai_note.get(source_key)
-        if not ai_path:
-            continue
-        try:
-            frontmatter = _extract_frontmatter(ai_path.read_text(encoding="utf-8"))
-            category = frontmatter.get("category", "").split("/")[0]
-            if category not in DOMAINS:
-                continue
-            stat = ai_path.stat()
-            processed_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
-            notes.append(
-                {
-                    "filename": raw_name,
-                    "title": frontmatter.get("title", raw_name),
-                    "category": category,
-                    "slug": ai_path.stem,
-                    "path": str(ai_path.relative_to(ai_notes_dir.parent)),
-                    "processed_at": processed_at,
-                }
-            )
-        except Exception as e:
-            logger.warning(f"构建 recent_notes 条目失败 {ai_path}: {e}")
+        ai_entries = source_to_ai_notes.get(source_key, [])
+        for _, ai_path in sorted(ai_entries, key=lambda e: e[0]):
+            try:
+                frontmatter = _extract_frontmatter(ai_path.read_text(encoding="utf-8"))
+                category = frontmatter.get("category", "").split("/")[0]
+                if category not in DOMAINS:
+                    continue
+                stat = ai_path.stat()
+                processed_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                notes.append(
+                    {
+                        "filename": raw_name,
+                        "title": frontmatter.get("title", raw_name),
+                        "category": category,
+                        "slug": ai_path.stem,
+                        "path": str(ai_path.relative_to(ai_notes_dir.parent)),
+                        "processed_at": processed_at,
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"构建 recent_notes 条目失败 {ai_path}: {e}")
 
     # 按 processed_notes 顺序，最后处理的在最前；取 10 篇
     notes = notes[::-1][:10]
@@ -166,7 +168,7 @@ def _build_recent_notes(memory: dict, ai_notes_dir: Path) -> dict:
 
 
 def _build_stats(memory: dict, ai_notes_dir: Path) -> dict:
-    """统计已处理笔记总数和各 category 数量。"""
+    """统计已处理原笔记总数和各 category 的小笔记文件数（拆分后一篇原笔记可贡献多篇）。"""
     processed = memory.get("meta", {}).get("processed_notes", [])
     category_counts = {d: 0 for d in DOMAINS}
 

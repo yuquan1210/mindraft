@@ -125,14 +125,17 @@ def process_new_notes(config: dict, dry_run: bool = False):
         note = group[0]
         try:
             result = _call_with_retry(note, memory, llm, config)
+            fragments = result["notes"]
+            categories = [f["category"] for f in fragments]
 
             if dry_run:
-                logger.info(f"[DRY-RUN] 将处理 {note['name']} → {result['category']}")
+                logger.info(f"[DRY-RUN] 将处理 {note['name']} → {len(fragments)} 篇: {categories}")
                 continue
 
-            write_ai_note(vault, note["name"], result)
+            write_ai_notes(vault, note["name"], fragments)
             apply_memory_updates(memory["active_memory"], result.get("memory_updates", []))
-            update_tag_candidates(memory, result.get("tags", []))
+            all_tags = [tag for f in fragments for tag in f.get("tags", [])]
+            update_tag_candidates(memory, all_tags)
             memory["meta"]["processed_notes"].append(note["name"])
             memory["meta"]["last_updated"] = today_iso()
             memory["meta"]["version"] += 1
@@ -140,7 +143,7 @@ def process_new_notes(config: dict, dry_run: bool = False):
                 json.dumps(memory["active_memory"], ensure_ascii=False), token_method
             )
             safe_write_json(str(memory_path), memory)
-            logger.info(f"✓ 已处理 {note['name']} → {result['category']}")
+            logger.info(f"✓ 已处理 {note['name']} → {len(fragments)} 篇: {categories}")
         except Exception as e:
             logger.error(f"处理笔记 {note['name']} 失败：{_friendly_error(e)}（已跳过该笔记，下次运行时会重新处理）")
             continue
@@ -169,8 +172,17 @@ def _call_with_retry(note: dict, memory: dict, llm, config: dict) -> dict:
             is_valid, error = validate_llm_output(result, PROCESS_NOTE_SCHEMA)
             if not is_valid:
                 raise ValueError(error)
-            # LLM 返回 domain + subcategory，join 为 category 供下游使用
-            result["category"] = f"{result['domain']}/{result['subcategory']}"
+            vocabulary = config.get("subcategory_vocabulary") or {}
+            for fragment in result["notes"]:
+                # LLM 返回 domain + subcategory，join 为 category 供下游使用
+                fragment["category"] = f"{fragment['domain']}/{fragment['subcategory']}"
+                # 词表为软约束：词表外的 subcategory 接受但记录日志，便于后续回填
+                known = vocabulary.get(fragment["domain"], [])
+                if known and fragment["subcategory"] not in known:
+                    logger.warning(
+                        f"笔记 {note['name']} 使用了词表外的 subcategory "
+                        f"{fragment['category']}（可考虑回填 config.subcategory_vocabulary）"
+                    )
             return result
         except Exception as e:
             last_error = e
@@ -235,39 +247,42 @@ _FrontmatterDumper.add_representer(
 )
 
 
-def write_ai_note(vault: Path, raw_name: str, result: dict):
-    """将重写后的笔记写入 ai_notes/ 目录。"""
-    category = result["category"]
-    title = result["title"]
-    slug = title_to_slug(title)
+def write_ai_notes(vault: Path, raw_name: str, fragments: list):
+    """将拆分后的小笔记逐篇写入 ai_notes/ 目录。"""
+    total = len(fragments)
+    for index, fragment in enumerate(fragments, start=1):
+        category = fragment["category"]
+        title = fragment["title"]
+        slug = title_to_slug(title)
 
-    target_dir = vault / "ai_notes" / category
-    target_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = vault / "ai_notes" / category
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-    base_path = target_dir / f"{slug}.md"
-    target_path = base_path
-    counter = 2
-    while target_path.exists():
-        target_path = target_dir / f"{slug}-{counter}.md"
-        counter += 1
+        base_path = target_dir / f"{slug}.md"
+        target_path = base_path
+        counter = 2
+        while target_path.exists():
+            target_path = target_dir / f"{slug}-{counter}.md"
+            counter += 1
 
-    frontmatter = {
-        "title": title,
-        "processed_at": datetime.now().isoformat(timespec="seconds"),
-        "category": category,
-        "tags": _FlowList(result.get("tags", [])),
-        "summary": result.get("summary", ""),
-        "source": f"raw_notes/{raw_name}",
-    }
+        frontmatter = {
+            "title": title,
+            "processed_at": datetime.now().isoformat(timespec="seconds"),
+            "category": category,
+            "tags": _FlowList(fragment.get("tags", [])),
+            "summary": fragment.get("summary", ""),
+            "source": f"raw_notes/{raw_name}",
+            "part": f"{index}/{total}",
+        }
 
-    content = "---\n"
-    content += yaml.dump(
-        frontmatter, Dumper=_FrontmatterDumper, allow_unicode=True, sort_keys=False
-    )
-    content += "---\n\n"
-    content += result["rewritten_content"]
+        content = "---\n"
+        content += yaml.dump(
+            frontmatter, Dumper=_FrontmatterDumper, allow_unicode=True, sort_keys=False
+        )
+        content += "---\n\n"
+        content += fragment["rewritten_content"]
 
-    target_path.write_text(content, encoding="utf-8")
+        target_path.write_text(content, encoding="utf-8")
 
 
 def update_tag_candidates(memory: dict, tags: list):
