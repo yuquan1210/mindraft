@@ -91,6 +91,46 @@ def test_regenerates_when_data_file_missing(tmp_path):
     assert fake.call_count == 1
 
 
+def test_recent_notes_includes_all_fragments_of_one_source(tmp_path):
+    """一篇原笔记拆分为多篇 ai_note 时，recent_notes 不应丢条目。"""
+    vault = tmp_path / "vault"
+    memory = {
+        "meta": {"processed_notes": ["note-a.md"]},
+        "active_memory": {d: {} for d in ["work", "life", "growth", "wellbeing", "identity"]},
+        "tag_candidates": {},
+    }
+    config = _make_vault(vault, memory)
+
+    def _write_ai_note(category: str, slug: str, part: str):
+        note_dir = vault / "ai_notes" / category
+        note_dir.mkdir(parents=True, exist_ok=True)
+        (note_dir / f"{slug}.md").write_text(
+            f"""---
+title: {slug}
+category: {category}
+tags: []
+summary: s
+source: raw_notes/note-a.md
+part: {part}
+---
+
+body
+""",
+            encoding="utf-8",
+        )
+
+    _write_ai_note("work/planning", "sprint-planning-day", "1/2")
+    _write_ai_note("wellbeing/exercise", "evening-run", "2/2")
+
+    data_dir = tmp_path / "dashboard" / "data"
+    _run_with_fake_llm(config, data_dir)
+
+    recent = json.loads((data_dir / "recent_notes.json").read_text(encoding="utf-8"))
+    titles = [n["title"] for n in recent["notes"]]
+    assert "sprint-planning-day" in titles
+    assert "evening-run" in titles
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -99,4 +139,5 @@ if __name__ == "__main__":
         test_skips_regeneration_when_memory_unchanged(tmp_path / "t1")
         test_regenerates_when_memory_changed(tmp_path / "t2")
         test_regenerates_when_data_file_missing(tmp_path / "t3")
+        test_recent_notes_includes_all_fragments_of_one_source(tmp_path / "t4")
     print("All tests passed!")

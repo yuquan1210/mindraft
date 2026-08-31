@@ -2,7 +2,7 @@
 
 > 本文件是 AI Agent 的项目入口，每次会话自动读取。细节文档按需查阅：
 > - `doc/Mindraft.md`（产品方案与阶段设计）
-> - `doc/mindraft-log.md`（实现日志 + ADR-001~016，架构决策的唯一权威来源）
+> - `doc/mindraft-log.md`（实现日志 + ADR-001~017，架构决策的唯一权威来源）
 > - `doc/Mindraft-Vibe-Coding-Guide.md`（人机协作流程）
 
 ## 项目定位
@@ -17,6 +17,7 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 ## 当前状态
 
 - **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。下一步 Phase 3（记忆压缩、跨周快照等，见 `doc/mindraft-log.md` 与 `doc/Mindraft.md` §9）。
+- 笔记重写已改为**按类别拆分**（ADR-017）：一篇原笔记由 LLM 一次调用拆分为 1~5 篇小笔记，分别写入 `ai_notes/{domain}/{subcategory}/`；domain 固定五域，subcategory 有 `config.yml → subcategory_vocabulary` 推荐词表（软约束）；`memory_updates`/`questions` 仍属整篇原笔记。
 - Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、`summary_style.yml`、笔记关联、URL 抓取。
 - 形象规划：原「像素画形象」已替换为「AI 导演的像素小人世界」（ADR-015），拆为 Phase 6（Kaplay.js 渲染基建，无 AI）与 Phase 7（LLM 场景生成 + 增量进化）。
 - 注意：`config.yml` 中 `summary_style` / `analysis_style` / `memory_compression` 三个 skill 开关对应的 yml 文件尚不存在，`skills/` 下实际只有 `note_style.yml`、`tagging.yml`、`json_output.yml`。
@@ -30,8 +31,8 @@ mindraft/
 ├── scripts/
 │   ├── llm/              # base.py + kimi/openai/anthropic/deepseek
 │   ├── llm_factory.py    # 按 config.llm_provider 返回 BaseLLM 实例
-│   ├── skill_loader.py   # 按 operation 拼装 system prompt（skills/*.yml）
-│   ├── process_notes.py  # 笔记处理主流程（逐篇 checkpoint）
+│   ├── skill_loader.py   # 按 operation 拼装 system prompt（skills/*.yml）+ 注入 subcategory 词表
+│   ├── process_notes.py  # 笔记处理主流程（逐篇 checkpoint；一篇拆分为多篇 ai_note，ADR-017）
 │   ├── note_filter.py    # 预筛选与分组
 │   ├── analyze.py        # 生成 dashboard/data/*.json
 │   ├── serve.py          # 本地静态服务
@@ -61,6 +62,7 @@ python -m pytest tests/           # 测试（test_llm_real.py 需要真实 API k
 ## 硬约束
 
 - **不修改** `raw_notes/` 任何文件。
+- **Git 重要操作必须经人工确认**：`git commit`、`git push`、创建/删除分支、`git reset`、`git rebase` 等一切改变仓库状态的操作，必须先向用户说明并获得明确同意后才可执行，不得因会话中较早的授权而默认后续操作也被允许。
 - `memory.json` 等核心状态文件必须通过 `utils.safe_write_json()` 原子写入；`run.py` 启动时获取 filelock 进程锁。
 - LLM 返回必须通过 `jsonschema` 校验；失败时自动重试一次（`_call_with_retry()`），仍失败则记录日志并跳过当前组，不中断整体流程。
 - Role Prompt 必须定义在 `prompts.py`，业务代码不硬编码 system prompt。

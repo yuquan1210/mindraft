@@ -12,7 +12,7 @@ from scripts.process_notes import process_new_notes
 
 
 class FakeLLM:
-    """模拟 LLM，返回符合 PROCESS_NOTE_SCHEMA 的固定结果。"""
+    """模拟 LLM，返回符合 PROCESS_NOTE_SCHEMA（拆分结构）的固定结果。"""
 
     def __init__(self, response: dict):
         self._response = response
@@ -22,16 +22,45 @@ class FakeLLM:
 
 
 DEFAULT_FAKE_RESPONSE = {
-    "title": "Productive Friday",
-    "domain": "work",
-    "subcategory": "daily",
-    "tags": ["auth-system", "refactoring"],
-    "summary": "Refactored the login module",
-    "rewritten_content": "# Productive Friday\n\nToday I refactored the login module.",
+    "notes": [
+        {
+            "title": "Productive Friday",
+            "domain": "work",
+            "subcategory": "daily",
+            "tags": ["auth-system", "refactoring"],
+            "summary": "Refactored the login module",
+            "rewritten_content": "# Productive Friday\n\nToday I refactored the login module.",
+        }
+    ],
     "questions": [],
     "memory_updates": [
         {"action": "APPEND_TO", "path": "work.ongoing_projects", "value": "Auth system redesign"},
         {"action": "SET_IF_NEW", "path": "work.current_focus", "value": "Login module refactoring"},
+    ],
+}
+
+MULTI_DOMAIN_FAKE_RESPONSE = {
+    "notes": [
+        {
+            "title": "Sprint Planning Day",
+            "domain": "work",
+            "subcategory": "planning",
+            "tags": ["sprint"],
+            "summary": "Planned the next sprint",
+            "rewritten_content": "# Sprint Planning Day\n\nPlanned the next sprint.",
+        },
+        {
+            "title": "Evening Run",
+            "domain": "wellbeing",
+            "subcategory": "exercise",
+            "tags": ["running"],
+            "summary": "Went for a run after work",
+            "rewritten_content": "# Evening Run\n\nWent for a run to unwind from work stress.",
+        },
+    ],
+    "questions": [],
+    "memory_updates": [
+        {"action": "APPEND_TO", "path": "wellbeing.recovery_activities", "value": "夜跑"},
     ],
 }
 
@@ -50,6 +79,10 @@ def _make_config(vault_path: Path) -> dict:
         "note_filter": {
             "min_meaningful_chars": 20,
             "batch_short_notes": False,
+        },
+        "subcategory_vocabulary": {
+            "work": ["daily", "planning"],
+            "wellbeing": ["exercise"],
         },
     }
 
@@ -94,6 +127,74 @@ def test_process_single_note_writes_ai_note_and_memory():
 
         assert memory["tag_candidates"]["auth-system"]["count"] == 1
         assert memory["tag_candidates"]["auth-system"]["status"] == "pending"
+
+
+def test_split_note_writes_multiple_ai_notes():
+    """一篇原笔记拆分为多篇小笔记：写入多个分类目录，part 与 source 正确。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        vault = Path(tmp)
+        config = _make_config(vault)
+        _write_raw_note(
+            vault, "2026-07-27.md",
+            "Sprint planning in the morning, went for a run after work to unwind.",
+        )
+
+        fake_llm = FakeLLM(MULTI_DOMAIN_FAKE_RESPONSE)
+        with patch("scripts.process_notes.get_llm", return_value=fake_llm):
+            process_new_notes(config, dry_run=False)
+
+        work_note = vault / "ai_notes" / "work" / "planning" / "sprint-planning-day.md"
+        run_note = vault / "ai_notes" / "wellbeing" / "exercise" / "evening-run.md"
+        assert work_note.exists(), f"ai_note not found: {work_note}"
+        assert run_note.exists(), f"ai_note not found: {run_note}"
+
+        work_content = work_note.read_text(encoding="utf-8")
+        run_content = run_note.read_text(encoding="utf-8")
+        assert "source: raw_notes/2026-07-27.md" in work_content
+        assert "source: raw_notes/2026-07-27.md" in run_content
+        assert "part: 1/2" in work_content
+        assert "part: 2/2" in run_content
+
+        memory = json.loads(
+            (vault / ".mindraft" / "memory.json").read_text(encoding="utf-8")
+        )
+        assert "2026-07-27.md" in memory["meta"]["processed_notes"]
+        # memory_updates 属于整篇原笔记
+        assert "夜跑" in memory["active_memory"]["wellbeing"]["recovery_activities"]
+        # 所有小笔记的 tags 都计入候选
+        assert memory["tag_candidates"]["sprint"]["count"] == 1
+        assert memory["tag_candidates"]["running"]["count"] == 1
+
+
+def test_out_of_vocabulary_subcategory_accepted_with_warning(caplog):
+    """词表外的 subcategory 应接受（软约束）并记录 warning。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        vault = Path(tmp)
+        config = _make_config(vault)
+        _write_raw_note(vault, "2026-07-28.md", "Went bouldering with friends today.")
+
+        response = {
+            "notes": [
+                {
+                    "title": "Bouldering Day",
+                    "domain": "wellbeing",
+                    "subcategory": "climbing",  # 不在词表 wellbeing: [exercise] 中
+                    "tags": [],
+                    "summary": "Bouldering with friends",
+                    "rewritten_content": "# Bouldering Day\n\nWent bouldering with friends.",
+                }
+            ],
+            "questions": [],
+            "memory_updates": [],
+        }
+        fake_llm = FakeLLM(response)
+        with patch("scripts.process_notes.get_llm", return_value=fake_llm):
+            with caplog.at_level("WARNING", logger="mindraft"):
+                process_new_notes(config, dry_run=False)
+
+        ai_note = vault / "ai_notes" / "wellbeing" / "climbing" / "bouldering-day.md"
+        assert ai_note.exists(), "词表外 subcategory 的小笔记应正常写入"
+        assert any("词表外" in r.message for r in caplog.records)
 
 
 def test_dry_run_does_not_write_files():
@@ -178,6 +279,8 @@ def test_transient_failure_recovers_on_retry():
 
 if __name__ == "__main__":
     test_process_single_note_writes_ai_note_and_memory()
+    test_split_note_writes_multiple_ai_notes()
+    # test_out_of_vocabulary_subcategory_accepted_with_warning 依赖 pytest caplog，仅经 pytest 运行
     test_dry_run_does_not_write_files()
     test_skipped_note_marked_processed()
     test_failed_note_not_marked_processed_and_retries()

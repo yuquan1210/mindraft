@@ -1,9 +1,9 @@
 from jsonschema import validate, ValidationError
 
-# process_note 操作的 LLM 返回结构
-PROCESS_NOTE_SCHEMA = {
+# 拆分后单篇小笔记的结构（process_note 返回 notes 数组的 item）
+NOTE_FRAGMENT_SCHEMA = {
     "type": "object",
-    "required": ["title", "domain", "subcategory", "tags", "summary", "rewritten_content", "memory_updates"],
+    "required": ["title", "domain", "subcategory", "tags", "summary", "rewritten_content"],
     "properties": {
         "title": {"type": "string", "minLength": 1, "maxLength": 80},
         "domain": {
@@ -26,6 +26,21 @@ PROCESS_NOTE_SCHEMA = {
         },
         "summary": {"type": "string", "maxLength": 60},
         "rewritten_content": {"type": "string", "minLength": 1},
+    },
+}
+
+# process_note 操作的 LLM 返回结构：
+# 一篇原笔记按内容类别拆分为 1~5 篇小笔记；memory_updates / questions 属于整篇原笔记
+PROCESS_NOTE_SCHEMA = {
+    "type": "object",
+    "required": ["notes", "memory_updates"],
+    "properties": {
+        "notes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": NOTE_FRAGMENT_SCHEMA,
+        },
         "questions": {"type": "array", "items": {"type": "string"}},
         "memory_updates": {
             "type": "array",
@@ -39,18 +54,6 @@ PROCESS_NOTE_SCHEMA = {
                 },
             },
         },
-    },
-}
-
-# 批量处理多篇笔记时的返回结构（Phase 1 不使用，保留接口）
-BATCH_PROCESS_SCHEMA = {
-    "type": "object",
-    "required": ["notes"],
-    "properties": {
-        "notes": {
-            "type": "array",
-            "items": PROCESS_NOTE_SCHEMA,
-        }
     },
 }
 

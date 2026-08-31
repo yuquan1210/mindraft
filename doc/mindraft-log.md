@@ -9,7 +9,7 @@
 
 **当前阶段**：Phase 2 ✅ 已完成 → Phase 3 ⬜ 未开始
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-08-18
+**最后更新**：2026-08-31
 
 ---
 
@@ -187,6 +187,15 @@
 | **决策** | 取消独立的 `snapshots/YYYY-WXX.json` 文件；`history_archive` 条目增加 `iso_week` 与 `trigger` 两个字段，`trigger ∈ {weekly, compression}`：跨周时追加 `weekly` 条目（纯数据拷贝，零 LLM，热层不变），压缩时追加 `compression` 条目（归档 + 热层浓缩写回）。`roadmap.json` 只从 `history_archive` 单数据源生成 |
 | **理由** | 原设计中 `history_archive` 快照与 `snapshots/*.json` 是同构数据的两份存储，roadmap 需要合并去重两类来源；统一后少一套文件、少一个写入时机、少一类合并逻辑；同时保留 ADR-013「早期未触发压缩时 Road Map 也有数据」的初衷（weekly 条目承担） |
 | **影响** | `maybe_generate_weekly_snapshot()` 改为向 `history_archive` 追加条目（仍在 analyze 入口执行，不受 memory_hash 跳过影响）；`snapshots/` 目录从设计中删除；roadmap 时间轴节点按 `archived_at` 排序，同一周允许 weekly + compression 两个节点并存，无需去重 |
+| **状态** | ✅ 已确认 |
+
+### ADR-017：笔记按类别拆分（一篇原笔记 → 多篇 ai_note）
+
+| 项 | 内容 |
+|----|------|
+| **决策** | 废弃「原笔记与 ai_note 一一对应」：LLM 一次调用将一篇原笔记按内容类别拆分为 1~5 篇小笔记（schema 硬上限 5），分别写入对应 `domain/subcategory/` 目录。拆分规则：归属单一（每段内容只归最主要类别）+ 必要上下文一两句话带入；只要构成独立主题即可单独成篇（哪怕只有两三句话），不构成独立主题的碎片（约 20 字以下）并入最相关片段。domain 仍固定五域；subcategory 增加 config.yml `subcategory_vocabulary` 推荐词表（软约束：优先选用，词表外允许新建并记录 warning 日志）。`memory_updates` / `questions` 仍属于整篇原笔记（顶层字段），与拆分无关。frontmatter 增加 `part: N/M` 序号 |
+| **理由** | 回顾笔记时关注的是内容本身而非归属；一篇笔记常同时涉及健身/工作/兴趣等多个类别，拆分后按目录检索更直接；记忆本来就跨域，memory_updates 无需跟着拆；固定推荐词表统一拆分粒度，避免类别发散，同时保留新主题的扩展空间 |
+| **影响** | `PROCESS_NOTE_SCHEMA` 改为 `{notes: [...], questions, memory_updates}`（原单篇结构降为 item）；`write_ai_note()` → `write_ai_notes()` 逐篇写入；`analyze.py` 的 recent_notes 从 source→单篇 1:1 假设改为 1:N 列表（原实现会丢条目）；stats 的 `category_counts` 语义变为小笔记文件数；词表经 `skill_loader` 以占位符 `{subcategory_vocabulary}` 注入 role prompt，业务代码不硬编码；存量 ai_notes 不迁移，`--rebuild` 重建 |
 | **状态** | ✅ 已确认 |
 
 ---
@@ -733,3 +742,50 @@ mindraft/
 
 **备注**
 - `avatar_data.json` 示例中的 `base_image_seed` 字段已随像素画方案一并移除（Phase 4 尚未实现，契约未冻结）。
+
+
+---
+
+### 笔记按类别拆分：一篇原笔记 → 多篇 ai_note（ADR-017，2026-08-31）
+
+**背景**
+原实现为原笔记与 ai_note 一一对应。用户指出一篇笔记常同时涉及多个类别（健身/工作/兴趣），回顾时关注的是内容本身而非归属，一一对应无必要；拆分为多篇小笔记更适合按目录检索。经 grilling 确认拆分策略后实施（分支 `feature/split-notes-by-category`）。
+
+**Grilling 决策结论**
+
+| 决策项 | 结论 |
+|---|---|
+| 分类固定度 | 固定 domain（五域，不变）+ config.yml 推荐 subcategory 词表（软约束，词表外允许新增 + warning） |
+| 跨类别段落 | 归属单一 + 必要上下文一两句话带入（允许少量冗余） |
+| 拆分粒度 | 构成独立主题即可单独成篇（哪怕 2-30 字）；约 20 字以下、不构成独立主题的碎片并入最相关片段 |
+| memory_updates | 整篇原笔记一组，与拆分无关（记忆本就跨域） |
+| LLM 调用 | 一次调用返回 notes 数组（≤5 篇），不增加调用次数 |
+| 存量 ai_notes | 不迁移，`--rebuild` 重建 |
+
+**完成内容**
+1. `config.yml`：新增 `subcategory_vocabulary` 五域推荐词表。
+2. `scripts/schemas.py`：`PROCESS_NOTE_SCHEMA` 改为 `{notes: [1~5 篇小笔记], questions, memory_updates}` 顶层结构；单篇结构抽为 `NOTE_FRAGMENT_SCHEMA`；`questions` 提升到顶层（属于整篇原笔记）；删除已无意义的 `BATCH_PROCESS_SCHEMA`。
+3. `scripts/prompts.py`：重写 `NOTE_PROCESSOR_ROLE`——任务改为按类别拆分 1~5 篇；新增拆分规则与分类词表段落（词表以 `{subcategory_vocabulary}` 占位符注入）；输出格式说明更新为 notes 数组。
+4. `scripts/skill_loader.py`：`build_system_prompt()` 追加词表占位符注入（`config.subcategory_vocabulary` 渲染为逐域列表；未配置时降级为「自行归纳」文本）；skill 拼装逻辑不变。
+5. `scripts/process_notes.py`：`write_ai_note()` → `write_ai_notes()` 逐篇写入（slug 冲突计数、frontmatter 平移 + 新增 `part: N/M`）；`_call_with_retry()` 校验新 schema、为每个 fragment join category、词表外 subcategory 记录 warning；tags 聚合全部小笔记计入候选；日志格式改为 `name → N 篇: [categories]`。
+6. `skills/note_style.yml`：核心任务改为拆分场景（每篇独立成篇、自足可读），URL 摘要等规则作用于每个片段。
+7. `scripts/analyze.py`：`_build_recent_notes()` 的 source→ai_note 映射改为 1:N 列表（原 1:1 假设会丢条目），按 part 排序，「最近 10 篇」语义变为最近 10 篇小笔记；`_build_stats()` 注释同步（category_counts 统计小笔记文件数）。
+8. 测试：`test_process_notes.py` FakeLLM 改为新 schema；新增拆分多篇写入（目录/part/source/memory_updates/tags）、词表外 subcategory 接受 + warning 两个用例；`test_analyze.py` 新增同一 source 多篇 ai_note 不丢条目用例。
+
+**验证结果**
+- `pytest` 11 个测试全过。
+
+
+---
+
+### memory_updates prompt 加固 + AGENTS.md git 确认规则（2026-08-31）
+
+**背景**
+拆分版全量 `--rebuild`（21 篇）后出现 4 条无效 memory_update warning：① LLM 自创路径（`life.interesting_topics`）；② 对字符串字段用 `APPEND_TO`（`recent_mood_trend`、`current_focus`）。经查 8-19 旧运行即有同类 warning，非本次拆分改动引入；但拆分后输出变长，memory_updates 作为附带任务质量可能被挤压。此类「路径非法但格式合法」的错误不触发重试，条目被静默忽略（记忆信号丢失）。用户决定只做 prompt 加固，不做代码兜底（APPEND_TO 打字符串路径自动降级为 SET_IF_NEW 的方案已提出并被否）。
+
+**完成内容**
+1. `prompts.py` `NOTE_PROCESSOR_ROLE` memory_updates 规则收紧：明确 `APPEND_TO` 只能用于标注为（字符串列表）的路径；（字符串）路径只能用 `SET_IF_NEW`；禁止自创路径。
+2. `AGENTS.md` 硬约束新增：**Git 重要操作（commit / push / 创建删除分支 / reset / rebase 等）必须经人工确认后执行**，较早的授权不延伸至后续操作。
+
+**验证结果**
+- `pytest` 11 个测试全过（prompt 变更不影响测试，仅确认无回归）。
