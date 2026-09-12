@@ -42,7 +42,8 @@ def main():
     logger.info(f"Mindraft 启动 | dry_run={args.dry_run}")
 
     # 旧布局迁移：{vault}/analysis/memory.json → {vault}/.mindraft/memory.json
-    migrate_legacy_analysis_state(config)
+    if not args.dry_run:
+        migrate_legacy_analysis_state(config)
 
     if args.rebuild:
         if removed:
@@ -67,8 +68,8 @@ def main():
 
             if args.dry_run:
                 logger.info("--dry-run 模式：调用 LLM，但不写入任何业务状态文件")
-                process_new_notes(config, dry_run=True)
-                generate_dashboard_data(config, dry_run=True)
+                memory = process_new_notes(config, dry_run=True)
+                generate_dashboard_data(config, dry_run=True, memory=memory)
                 logger.info("Dry-run 完成")
                 return
 

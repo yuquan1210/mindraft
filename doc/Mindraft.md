@@ -567,7 +567,7 @@ LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE
 
 → 实现代码：`scripts/process_notes.py`、`scripts/note_filter.py`、`scripts/schemas.py`、`scripts/prompts.py`
 
-#### 压缩触发与执行（Phase 3 规划，当前未实现）
+#### 压缩触发与执行（Phase 3 已实现，待真实质量验收）
 
 active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
 
@@ -821,7 +821,7 @@ Transformation（稀有，标志性人生转变）
 | 字数趋势图 | 最近 7 天每天笔记总字数柱状图 | `stats.json` |
 | 活跃日历 | 类 GitHub 热力图，最近 12 周 | `stats.json` |
 | 每日一句 | 当天（或最近一篇）笔记摘要 | `summaries.json` |
-| MBTI 风格描述 | 基于近 4 周笔记的性格分析 | `profile.json` |
+| MBTI 风格描述 | 基于 active_memory 的长期性格侧写 | `profile.json` |
 | Road Map Timeline | 以周为节点的状态变化轨迹 | `roadmap.json` |
 | Work Me | 工作场景用户画像 | `avatar_data.json` |
 | Home Me | 生活场景用户画像 | `avatar_data.json` |
@@ -859,7 +859,7 @@ Hover：显示日期 + 当天字数 + 摘要
  偶尔让你陷入过度思考。生活中你正在寻找某种节奏感，
  健身和阅读是你给自己的喘息空间。"
 
-更新频率：每次 run.py 执行后重新生成
+更新频率：active_memory 变化或契约文件缺失时，与 summaries 共用一次 LLM 调用
 数据来源：memory.active_memory
 ```
 
@@ -1100,6 +1100,8 @@ run.py 执行
 ---
 
 ### Phase 3 — 记忆系统完善
+
+**状态**：2026-09-07 实现完成，mock 回归通过；真实 LLM 和人工质量验收待完成，详见实现日志。
 
 **目标**：记忆压缩机制正常运转，Dashboard 展示更丰富的自我分析
 

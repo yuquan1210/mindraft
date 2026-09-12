@@ -16,11 +16,11 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 
 ## 当前状态
 
-- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。下一步 Phase 3（记忆压缩、跨周快照等，见 `doc/mindraft-log.md` 与 `doc/Mindraft.md` §9）。
+- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。Phase 3 已实现（记忆压缩、跨周快照、性格侧写、时间轴），mock 回归通过，待真实 LLM 与人工质量验收，见 `doc/mindraft-log.md`。
 - 笔记重写已改为**按类别拆分**（ADR-017）：一篇原笔记由 LLM 一次调用拆分为 1~5 篇小笔记，分别写入 `ai_notes/{domain}/{subcategory}/`；domain 固定五域，subcategory 有 `config.yml → subcategory_vocabulary` 推荐词表（软约束）；`memory_updates`/`questions` 仍属整篇原笔记。
 - Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、`summary_style.yml`、笔记关联、URL 抓取。
 - 形象规划：原「像素画形象」已替换为「AI 导演的像素小人世界」（ADR-015），拆为 Phase 6（Kaplay.js 渲染基建，无 AI）与 Phase 7（LLM 场景生成 + 增量进化）。
-- 注意：`config.yml` 中 `summary_style` / `analysis_style` / `memory_compression` 三个 skill 开关对应的 yml 文件尚不存在，`skills/` 下实际只有 `note_style.yml`、`tagging.yml`、`json_output.yml`。
+- Phase 3 新增 `summary_style.yml`、`analysis_style.yml`、`memory_compression.yml`。热层五域字段是近期原文，`active_memory._condensed` 是浓缩区；`original_order` 跟踪原文顺序，`history_archive` 是历史唯一数据源。
 
 ## 目录结构
 

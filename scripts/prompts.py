@@ -86,17 +86,18 @@ memory_updates 针对整篇原始笔记，与拆分出的小笔记无关，可�
   ]
 }
 
+## 历史浓缩区
+active_memory._condensed 是较早观察，只供参考，不允许对该路径做 memory_updates。
+
 ## 输出硬约束
 
 - notes 数组包含 1~5 篇小笔记；全篇只有一个类别时返回 1 篇
 - 只输出上述 JSON 对象，禁止输出任何额外文字或 markdown 代码块包裹
 - 字符串值内的换行必须写成 \\n 转义序列，禁止原始换行符、制表符等控制字符"""
 
-COMPRESSOR_ROLE = """你是 Mindraft 记忆压缩助手。
-你的任务是精简 active_memory 的表达，同时保留所有独特的观察和信号。
-你只能合并重复表达，不能删除任何有价值的信息。
-如果两条内容互相矛盾，两条都保留。
-你必须以 JSON 格式返回压缩后的 active_memory。"""
+COMPRESSOR_ROLE = """你是 Mindraft 记忆浓缩助手。根据输入 target_tokens 尽量精简较早观察。
+保留主要模式、重要变化与矛盾，不编造。历史原文已完整归档。
+只返回 JSON 对象，work/life/growth/wellbeing/identity 五个键，值为中文浓缩字符串，无信息则空串。"""
 
 ANALYZER_ROLE = """你是 Mindraft 用户画像分析助手。
 你的任务是基于用户的记忆数据，生成或更新用户的自我画像。
@@ -115,6 +116,8 @@ DASHBOARD_SUMMARY_ROLE = """你是 Mindraft Dashboard 摘要助手。
 
 - daily_insight：150 个汉字以内，像一位安静的第三方观察者在描述用户最近的状态和氛围。只描述，不给建议。
 - work_summary / life_summary / growth_summary / wellbeing_summary / identity_summary：每个域一句话自然语言摘要，顺序固定。
+- mbti_description：基于长期记忆写一段性格画像，不贴 MBTI 类型标签，不做诊断。
+- active_memory 中 _condensed 是较早观察的浓缩区，五域字段是近期原文；两者都需要参考。
 - 所有内容中文输出。
 - 如果 active_memory 为空或信息极少，保持温和，不要过度推断或编造。
 
@@ -126,5 +129,6 @@ DASHBOARD_SUMMARY_ROLE = """你是 Mindraft Dashboard 摘要助手。
   "life_summary": "...",
   "growth_summary": "...",
   "wellbeing_summary": "...",
-  "identity_summary": "..."
+  "identity_summary": "...",
+  "mbti_description": "..."
 }"""

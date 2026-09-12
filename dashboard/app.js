@@ -60,6 +60,31 @@
             recentNotes = null;
         }
 
+        const [profile, roadmap] = await Promise.all([
+            fetchJson(config.data_files?.profile || 'data/profile.json').catch(() => null),
+            fetchJson(config.data_files?.roadmap || 'data/roadmap.json').catch(() => null),
+        ]);
+        if (profile?.mbti_description) {
+            document.getElementById('profile-text').textContent = profile.mbti_description;
+        }
+        if (roadmap?.nodes?.length) {
+            document.getElementById('roadmap-empty').classList.add('hidden');
+            const list = document.getElementById('roadmap-list');
+            for (const node of roadmap.nodes) {
+                const li = document.createElement('li');
+                const heading = document.createElement('h3');
+                heading.textContent = `${node.iso_week} · ${node.trigger === 'weekly' ? '周快照' : '记忆压缩'}`;
+                const count = document.createElement('p');
+                count.className = 'note-meta';
+                count.textContent = `截至此时累计 ${node.note_count_at_time} 篇笔记`;
+                const description = document.createElement('p');
+                description.textContent = node.description;
+                li.title = `${formatDateTime(node.archived_at)} · ${(node.tags || []).join(' / ')}`;
+                li.append(heading, count, description);
+                list.appendChild(li);
+            }
+        }
+
         const hasData = summaries || stats || (recentNotes && recentNotes.notes && recentNotes.notes.length > 0);
 
         if (!hasData) {
@@ -102,7 +127,9 @@
             tagCandidatesList.innerHTML = '';
             for (const [tag, info] of Object.entries(summaries.tag_candidates)) {
                 const li = document.createElement('li');
-                li.innerHTML = `${escapeHtml(tag)}<span class="tag-count">${info.count || 0}</span>`;
+                li.classList.toggle('active-tag', info.status === 'active');
+                li.title = info.status === 'active' ? '活跃标签（至少 3 篇原笔记）' : '候选标签';
+                li.innerHTML = `${info.status === 'active' ? '● ' : ''}${escapeHtml(tag)}<span class="tag-count">${info.count || 0}</span>`;
                 tagCandidatesList.appendChild(li);
             }
             tagCandidatesSection.classList.remove('hidden');

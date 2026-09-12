@@ -207,3 +207,10 @@ body {
 .hidden {
     display: none !important;
 }
+
+#profile-text { white-space: pre-line; line-height: 1.8; }
+.timeline { display: flex; gap: 20px; overflow-x: auto; padding: 12px 0 16px; list-style: none; }
+.timeline li { flex: 0 0 260px; border-top: 2px solid var(--accent); padding: 16px 8px; overflow-wrap: anywhere; }
+.timeline h3 { font-size: 1rem; margin-bottom: 10px; }
+.timeline p { line-height: 1.7; }
+.tag-list li.active-tag { border-color: var(--accent); color: var(--text); }

@@ -7,7 +7,7 @@
 
 ## 项目状态
 
-**当前阶段**：Phase 2 ✅ 已完成 → Phase 3 ⬜ 未开始
+**当前阶段**：Phase 3 实现完成，mock 回归通过；真实 LLM 与人工质量验收待完成。
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
 **最后更新**：2026-08-31
 
@@ -207,7 +207,7 @@
 | Phase 0：基础骨架 | ✅ 已完成 | 2026-07-25 | `.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
 | Phase 1：笔记处理核心 | ✅ 已完成 | 2026-07-26 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
 | Phase 2：Dashboard MVP | ✅ 已完成 | 2026-08-05 | `analyze.py`、Dashboard HTML/JS、`serve.py` |
-| Phase 3：记忆系统完善 | ⬜ 未开始 | — | 记忆压缩、MBTI 描述、Road Map |
+| Phase 3：记忆系统完善 | 实现完成，待人工验收 | 2026-09-07 | 记忆压缩、统一归档、MBTI 描述、Road Map |
 | Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
 | Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
 | Phase 6：像素世界渲染基建（无 AI） | ⬜ 未开始 | — | 素材 manifest、Kaplay.js、`pixel_world_renderer.js`、剧本执行器（ADR-015） |
@@ -789,3 +789,20 @@ mindraft/
 
 **验证结果**
 - `pytest` 11 个测试全过（prompt 变更不影响测试，仅确认无回归）。
+
+
+### 2026-09-07 Phase 3 实现
+
+- 新增 `scripts/memory.py`：每篇 checkpoint 后检测热层阈值；启动处理前也检查，确保上次失败在无新笔记时仍可重试。较早原文浓缩一次，浓缩区超子预算时最多再治理一次；每次调用 schema 校验、失败重试一次。超过目标接受并 warning，不循环。
+- 兼容旧记忆布局：五域字段继续承载原文，`active_memory._condensed` 保存五域浓缩字符串；`original_order` 记录原文观察的追加顺序，不进入 LLM 上下文。旧数据无时间戳，首次以已有字段/列表顺序初始化，之后跟踪新增观察。单条最新观察超过原文预算时整条保留，避免截断。
+- 压缩成功后一次 `safe_write_json()` 同时追加完整旧热层快照并替换新热层；LLM 或写入失败不改变磁盘/内存状态。历史信号通过完整快照保留。
+- ADR-016：周快照仅复制数据，独立于摘要 hash；处理新笔记前和 analyze 入口均检查，避免 `last_updated` 被新笔记覆盖导致漏掉跨周。`meta.weekly_checkpoint` 防重复，ISO 年/周共同判断，跨多个未运行周只记录一份实际快照，不伪造缺席周数据。weekly 的 `iso_week` 标记上次检查所属周，`archived_at` 为实际归档时间。
+- 摘要与 MBTI 风格性格侧写共用一次调用，通过 skill_loader 挂载新增的 `summary_style.yml` / `analysis_style.yml`；压缩挂载 `memory_compression.yml`。输出拆为 summaries/profile；hash 仅覆盖 active_memory。归档、标签、统计更新不触发 LLM；缺契约文件、损坏 JSON 或 fallback 会触发重试。
+- Road Map 从 history_archive 单数据源按实际归档时间排序，保留同周 weekly/compression 节点，用快照观察模板生成描述，无额外 LLM。历史只存累计笔记数，界面准确标为“截至此时累计”，不冒充当周篇数。兼容缺少 iso_week/trigger 的历史条目。
+- Tag 每篇原笔记去重计数（拆分片段不重复累加），count ≥ 3 升级 active；Dashboard 显示活跃/候选差异，不注入笔记 prompt。
+- Dashboard 新增性格侧写和横向时间轴，包含无数据/缺文件降级；生成文本通过 textContent 输出。字数图、活跃日历按既有决策继续延后。
+- dry-run 在内存中执行笔记更新、压缩、周归档，再将同一份模拟记忆交给 analyze；不写业务状态，不迁移旧 vault 状态。
+
+验证：`.venv/bin/python -m pytest tests/ --ignore=tests/test_llm_real.py` 通过 24 项；覆盖压缩原子性、失败重试/回滚、近期原文、token 目标、跨年周去重、标签升级、缓存与缺文件补生成、端到端 dry-run。Python 编译、JS 语法和 diff whitespace 检查通过；Node DOM smoke 验证了性格侧写、时间轴、活跃标签与生成文本按纯文本渲染（未进行浏览器截图验收）。
+
+真实验证限制：已执行 `run.py --dry-run`，LLM 返回 401（环境没有有效 DeepSeek API key）；全量 `pytest tests/` 同样在原有 `test_llm_real.py` 收集阶段被 401 阻断。真实压缩质量及用户 vault 人工验收尚未完成，未宣告进入 Phase 4。未执行 commit/push/分支操作。

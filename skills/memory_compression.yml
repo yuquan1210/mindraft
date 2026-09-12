@@ -1,0 +1,6 @@
+name: memory_compression
+description: memory_compression
+applies_to:
+- compress_memory
+rules:
+- 保留跨域模式与矛盾，合并重复表达，优先满足输入的 token 目标。

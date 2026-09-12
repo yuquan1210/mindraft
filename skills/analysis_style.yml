@@ -1,0 +1,6 @@
+name: analysis_style
+description: analysis_style
+applies_to:
+- dashboard_summary
+rules:
+- 性格描述基于长期记忆，以温和具体的语言描述，信息不足时明确表达，不推断确定人格类型。

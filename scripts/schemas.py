@@ -67,6 +67,7 @@ DASHBOARD_SUMMARY_SCHEMA = {
         "growth_summary",
         "wellbeing_summary",
         "identity_summary",
+        "mbti_description",
     ],
     "properties": {
         "daily_insight": {"type": "string", "maxLength": 220},
@@ -75,6 +76,7 @@ DASHBOARD_SUMMARY_SCHEMA = {
         "growth_summary": {"type": "string"},
         "wellbeing_summary": {"type": "string"},
         "identity_summary": {"type": "string"},
+        "mbti_description": {"type": "string", "minLength": 1},
     },
 }
 
@@ -86,3 +88,10 @@ def validate_llm_output(data: dict, schema: dict) -> tuple[bool, str]:
         return True, ""
     except ValidationError as e:
         return False, f"Schema validation failed: {e.message}"
+
+COMPRESSION_SCHEMA = {
+    "type": "object",
+    "required": ["work", "life", "growth", "wellbeing", "identity"],
+    "properties": {d: {"type": "string"} for d in ["work", "life", "growth", "wellbeing", "identity"]},
+    "additionalProperties": False,
+}

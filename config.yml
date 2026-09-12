@@ -2,7 +2,7 @@
 # 运行时通过 config.yml 关联 notes-vault 笔记仓库
 
 # 笔记仓库路径（指向 notes-vault 本地路径）
-notes_vault_path: ~/Developer/GitHub/notes-vault
+notes_vault_path: ~/Developer/notes-vault
 
 # LLM 配置（改 llm_provider 这一行切换模型）
 llm_provider: deepseek           # kimi | openai | anthropic | deepseek
@@ -23,6 +23,8 @@ api_keys:
 memory:
   active_memory_token_threshold: 1500
   compression_target_ratio: 0.55
+  original_zone_tokens: 300
+  condensed_zone_token_budget: 900
 
 # Skill 开关
 skills:

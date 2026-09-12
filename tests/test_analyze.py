@@ -19,6 +19,7 @@ class FakeLLM:
         self.call_count += 1
         return {
             "daily_insight": "测试洞察",
+            "mbti_description": "你善于观察自己的状态。",
             "work_summary": "w",
             "life_summary": "l",
             "growth_summary": "g",
@@ -71,7 +72,7 @@ def test_regenerates_when_memory_changed(tmp_path):
     memory = json.loads(
         (tmp_path / "vault" / ".mindraft" / "memory.json").read_text(encoding="utf-8")
     )
-    memory["tag_candidates"] = {"new-tag": 1}
+    memory["active_memory"]["work"] = {"goals": ["新目标"]}
     (tmp_path / "vault" / ".mindraft" / "memory.json").write_text(
         json.dumps(memory, ensure_ascii=False), encoding="utf-8"
     )
@@ -141,3 +142,54 @@ if __name__ == "__main__":
         test_regenerates_when_data_file_missing(tmp_path / "t3")
         test_recent_notes_includes_all_fragments_of_one_source(tmp_path / "t4")
     print("All tests passed!")
+
+
+def test_archive_and_tags_refresh_without_llm(tmp_path):
+    config = _make_vault(tmp_path / "vault")
+    data_dir = tmp_path / "data"
+    _run_with_fake_llm(config, data_dir)
+    path = tmp_path / "vault" / ".mindraft" / "memory.json"
+    memory = json.loads(path.read_text())
+    memory["history_archive"] = [{"archived_at": "2026-01-01", "snapshot": memory["active_memory"]}]
+    memory["tag_candidates"] = {"writing": {"count": 3, "status": "active"}}
+    path.write_text(json.dumps(memory))
+    assert _run_with_fake_llm(config, data_dir).call_count == 0
+    assert len(json.loads((data_dir / "roadmap.json").read_text())["nodes"]) == 1
+    assert json.loads((data_dir / "summaries.json").read_text())["tag_candidates"] == memory["tag_candidates"]
+
+
+def test_missing_profile_forces_generation(tmp_path):
+    config = _make_vault(tmp_path / "vault")
+    data_dir = tmp_path / "data"
+    _run_with_fake_llm(config, data_dir)
+    (data_dir / "profile.json").unlink()
+    assert _run_with_fake_llm(config, data_dir).call_count == 1
+
+
+def test_summary_schema_retry_and_fallback_not_cached(tmp_path):
+    from unittest.mock import Mock
+    config = _make_vault(tmp_path / "vault")
+    data_dir = tmp_path / "data"
+    fake = Mock()
+    fake.chat_json.return_value = {}
+    with patch("scripts.analyze.DASHBOARD_DATA_DIR", data_dir), patch("scripts.analyze.get_llm", return_value=fake):
+        generate_dashboard_data(config)
+    assert fake.chat_json.call_count == 2
+    assert json.loads((data_dir / "profile.json").read_text())["fallback"]
+    assert _run_with_fake_llm(config, data_dir).call_count == 1
+
+
+def test_analyze_dry_run_does_not_write(tmp_path):
+    config = _make_vault(tmp_path / "vault")
+    path = tmp_path / "vault" / ".mindraft" / "memory.json"
+    memory = json.loads(path.read_text())
+    memory["meta"]["last_updated"] = "2020-01-01"
+    path.write_text(json.dumps(memory))
+    before = path.read_bytes()
+    data_dir = tmp_path / "data"
+    fake = FakeLLM()
+    with patch("scripts.analyze.DASHBOARD_DATA_DIR", data_dir), patch("scripts.analyze.get_llm", return_value=fake):
+        generate_dashboard_data(config, dry_run=True)
+    assert fake.call_count == 1
+    assert path.read_bytes() == before
+    assert not data_dir.exists()

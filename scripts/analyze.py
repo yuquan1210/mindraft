@@ -7,9 +7,12 @@ from pathlib import Path
 
 import yaml
 
+from scripts.memory import maybe_generate_weekly_snapshot, observations, iso_week
+from scripts.skill_loader import build_system_prompt
+from scripts.llm_calls import call_with_retry
 from scripts.llm_factory import get_llm
 from scripts.prompts import DASHBOARD_SUMMARY_ROLE
-from scripts.schemas import DASHBOARD_SUMMARY_SCHEMA, validate_llm_output
+from scripts.schemas import DASHBOARD_SUMMARY_SCHEMA
 from scripts.utils import safe_write_json, load_config, get_memory_path
 
 logger = logging.getLogger("mindraft")
@@ -20,12 +23,12 @@ FALLBACK_DAILY_INSIGHT = "今日洞察生成失败，请稍后重试。"
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
 
 
-def generate_dashboard_data(config: dict, dry_run: bool = False):
+def generate_dashboard_data(config: dict, dry_run: bool = False, memory=None):
     """
     生成 Dashboard 所需数据并写入 mindraft/dashboard/data/。
 
-    memory 未变化且数据文件齐全时直接跳过（不调 LLM、不重写文件）；
-    需要强制重新生成时使用 run.py --rebuild。
+    active_memory 未变化且数据文件齐全时复用摘要和性格描述；
+    统计、标签、历史时间轴仍更新。缺文件或生成失败时重新调用 LLM。
 
     Args:
         config: 加载后的 config.yml 配置。
@@ -34,25 +37,35 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
     vault = Path(config["notes_vault_path"]).expanduser()
     dashboard_data_dir = DASHBOARD_DATA_DIR
 
-    memory = _load_memory(get_memory_path(config))
+    if memory is None:
+        memory = _load_memory(get_memory_path(config))
+    maybe_generate_weekly_snapshot(memory, config, dry_run)
     ai_notes_dir = vault / "ai_notes"
 
     memory_hash = _memory_hash(memory)
-    if not dry_run and _dashboard_up_to_date(dashboard_data_dir, memory_hash):
-        logger.info("memory 未变化，dashboard 数据已是最新，跳过生成（--rebuild 可强制重建）")
-        return
+    cached = not dry_run and _dashboard_up_to_date(dashboard_data_dir, memory_hash)
 
     recent_notes = _build_recent_notes(memory, ai_notes_dir)
     stats = _build_stats(memory, ai_notes_dir)
 
     # 调用 LLM 生成 summaries
-    summaries = _generate_summaries(memory, config, dry_run)
+    if cached:
+        summaries = json.loads((dashboard_data_dir / "summaries.json").read_text(encoding="utf-8"))
+        profile = json.loads((dashboard_data_dir / "profile.json").read_text(encoding="utf-8"))
+    else:
+        summaries = _generate_summaries(memory, config, dry_run)
+        profile = {"generated_at": summaries["generated_at"], "fallback": summaries["fallback"],
+                   "mbti_description": summaries.pop("mbti_description", "性格描述暂不可用，请稍后重试。")}
+    summaries["tag_candidates"] = memory.get("tag_candidates", {})
+    roadmap = _build_roadmap(memory)
 
     config_json = {
         "dashboard_title": "Mindraft",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "memory_hash": memory_hash,
         "data_files": {
+            "profile": "data/profile.json",
+            "roadmap": "data/roadmap.json",
             "summaries": "data/summaries.json",
             "stats": "data/stats.json",
             "recent_notes": "data/recent_notes.json",
@@ -71,6 +84,8 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
     safe_write_json(str(dashboard_data_dir / "summaries.json"), summaries)
     safe_write_json(str(dashboard_data_dir / "stats.json"), stats)
     safe_write_json(str(dashboard_data_dir / "recent_notes.json"), recent_notes)
+    safe_write_json(str(dashboard_data_dir / "profile.json"), profile)
+    safe_write_json(str(dashboard_data_dir / "roadmap.json"), roadmap)
     safe_write_json(str(dashboard_data_dir / "config.json"), config_json)
 
     logger.info("Dashboard 数据已生成到 %s", dashboard_data_dir)
@@ -78,7 +93,7 @@ def generate_dashboard_data(config: dict, dry_run: bool = False):
 
 def _memory_hash(memory: dict) -> str:
     """memory 内容的稳定哈希，用于判断 dashboard 数据是否需要重新生成。"""
-    canonical = json.dumps(memory, sort_keys=True, ensure_ascii=False)
+    canonical = json.dumps(memory.get("active_memory", {}), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -87,11 +102,15 @@ def _dashboard_up_to_date(dashboard_data_dir: Path, memory_hash: str) -> bool:
     config_path = dashboard_data_dir / "config.json"
     if not config_path.exists():
         return False
-    data_files = ["summaries.json", "stats.json", "recent_notes.json"]
+    data_files = ["summaries.json", "stats.json", "recent_notes.json", "profile.json", "roadmap.json"]
     if any(not (dashboard_data_dir / name).exists() for name in data_files):
         return False
     try:
         existing = json.loads(config_path.read_text(encoding="utf-8"))
+        for name in data_files:
+            data = json.loads((dashboard_data_dir / name).read_text(encoding="utf-8"))
+            if data.get("fallback"):
+                return False
     except Exception:
         return False
     return existing.get("memory_hash") == memory_hash
@@ -196,23 +215,6 @@ def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
 
     generated_at = datetime.now().isoformat()
 
-    if dry_run:
-        logger.info("[DRY-RUN] 将调用 LLM 生成 dashboard summaries")
-        # dry-run 仍需真实调用 LLM 以验证 pipeline，但不写入
-        try:
-            llm = get_llm(config)
-            result = _call_summary_llm(active_memory, tag_candidates, llm)
-            logger.info(f"[DRY-RUN] LLM 返回 daily_insight: {result.get('daily_insight', '')[:40]}...")
-        except Exception as e:
-            logger.warning(f"[DRY-RUN] LLM 调用失败：{e}")
-        return {
-            "generated_at": generated_at,
-            "fallback": True,
-            "daily_insight": FALLBACK_DAILY_INSIGHT,
-            "domain_summaries": {d: "" for d in DOMAINS},
-            "tag_candidates": tag_candidates,
-        }
-
     summaries = {
         "generated_at": generated_at,
         "fallback": False,
@@ -223,7 +225,8 @@ def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
 
     try:
         llm = get_llm(config)
-        result = _call_summary_llm(active_memory, tag_candidates, llm)
+        result = _call_summary_llm(active_memory, tag_candidates, llm, config)
+        summaries["mbti_description"] = result["mbti_description"]
         summaries["daily_insight"] = result.get("daily_insight", "")
         summaries["domain_summaries"] = {
             "work": result.get("work_summary", ""),
@@ -240,9 +243,9 @@ def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
     return summaries
 
 
-def _call_summary_llm(active_memory: dict, tag_candidates: dict, llm) -> dict:
+def _call_summary_llm(active_memory: dict, tag_candidates: dict, llm, config=None) -> dict:
     """调用 LLM 生成 dashboard 摘要。"""
-    system = DASHBOARD_SUMMARY_ROLE
+    system = build_system_prompt("dashboard_summary", DASHBOARD_SUMMARY_ROLE, config or {})
     user_content = f"""用户的 active_memory：
 {json.dumps(active_memory, ensure_ascii=False, indent=2)}
 
@@ -250,11 +253,29 @@ tag_candidates：
 {json.dumps(tag_candidates, ensure_ascii=False, indent=2)}
 
 请生成 dashboard summaries。"""
-    result = llm.chat_json(system=system, user=user_content)
-    is_valid, error = validate_llm_output(result, DASHBOARD_SUMMARY_SCHEMA)
-    if not is_valid:
-        raise ValueError(error)
-    return result
+    return call_with_retry(llm, system, user_content, DASHBOARD_SUMMARY_SCHEMA)
+
+
+def _build_roadmap(memory):
+    nodes = []
+    for entry in memory.get("history_archive", []):
+        date = entry.get("archived_at", "")
+        week = entry.get("iso_week")
+        if not week:
+            try:
+                week = iso_week(datetime.fromisoformat(date))
+            except ValueError:
+                week = "未知周"
+        snapshot = entry.get("snapshot", {})
+        keywords = list(dict.fromkeys(str(item[2]) for item in observations(snapshot)))[:3]
+        if not keywords:
+            keywords = [v for v in snapshot.get("_condensed", {}).values() if v][:3]
+        nodes.append({"iso_week": week, "archived_at": date,
+                      "trigger": entry.get("trigger", "compression"),
+                      "note_count_at_time": entry.get("note_count_at_time", 0),
+                      "keywords": keywords, "tags": list(entry.get("tags", {}))[:5],
+                      "description": "；".join(keywords) or "这一阶段尚无具体观察。"})
+    return {"nodes": sorted(nodes, key=lambda node: node["archived_at"])}
 
 
 def _extract_frontmatter(content: str) -> dict:

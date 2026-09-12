@@ -1,5 +1,6 @@
 # scripts/process_notes.py
 import json
+from copy import deepcopy
 import logging
 import re
 from datetime import datetime
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from scripts.memory import compress_memory, maybe_generate_weekly_snapshot, sync_original_order
 from scripts.llm_factory import get_llm
 from scripts.schemas import PROCESS_NOTE_SCHEMA, validate_llm_output
 from scripts.prompts import NOTE_PROCESSOR_ROLE
@@ -87,7 +89,14 @@ def process_new_notes(config: dict, dry_run: bool = False):
     if memory_path.exists():
         memory = json.loads(memory_path.read_text(encoding="utf-8"))
 
+    previous_tags = deepcopy(memory.get("tag_candidates", {}))
+    update_tag_candidates(memory, [])
+    if memory.get("tag_candidates", {}) != previous_tags and not dry_run:
+        safe_write_json(str(memory_path), memory)
+    maybe_generate_weekly_snapshot(memory, config, dry_run)
+    sync_original_order(memory)
     llm = get_llm(config)
+    compress_memory(memory, llm, config, dry_run)
     token_method = config.get("token_estimation", "char_ratio")
 
     processed = set(memory["meta"]["processed_notes"])
@@ -111,7 +120,7 @@ def process_new_notes(config: dict, dry_run: bool = False):
         logger.info("没有新的有效笔记需要处理")
         if skipped and not dry_run:
             safe_write_json(str(memory_path), memory)
-        return
+        return memory
 
     # 先保存被跳过的笔记标记，避免丢失
     if skipped and not dry_run:
@@ -130,9 +139,9 @@ def process_new_notes(config: dict, dry_run: bool = False):
 
             if dry_run:
                 logger.info(f"[DRY-RUN] 将处理 {note['name']} → {len(fragments)} 篇: {categories}")
-                continue
 
-            write_ai_notes(vault, note["name"], fragments)
+            if not dry_run:
+                write_ai_notes(vault, note["name"], fragments)
             apply_memory_updates(memory["active_memory"], result.get("memory_updates", []))
             all_tags = [tag for f in fragments for tag in f.get("tags", [])]
             update_tag_candidates(memory, all_tags)
@@ -142,12 +151,16 @@ def process_new_notes(config: dict, dry_run: bool = False):
             memory["meta"]["active_memory_token_estimate"] = token_estimate(
                 json.dumps(memory["active_memory"], ensure_ascii=False), token_method
             )
-            safe_write_json(str(memory_path), memory)
+            sync_original_order(memory)
+            if not dry_run:
+                safe_write_json(str(memory_path), memory)
+            compress_memory(memory, llm, config, dry_run)
             logger.info(f"✓ 已处理 {note['name']} → {len(fragments)} 篇: {categories}")
         except Exception as e:
             logger.error(f"处理笔记 {note['name']} 失败：{_friendly_error(e)}（已跳过该笔记，下次运行时会重新处理）")
             continue
 
+    return memory
 
 def process_single_note(note: dict, memory: dict, llm, config: dict) -> dict:
     """调用 LLM 处理单篇笔记。"""
@@ -207,6 +220,8 @@ def apply_memory_updates(active_memory: dict, updates: list):
         action = update.get("action")
         path = update.get("path")
         value = update.get("value")
+        if not isinstance(path, str) or path.split(".")[0] not in {"work", "life", "growth", "wellbeing", "identity"}:
+            continue
 
         if action == "APPEND_TO":
             target = get_nested(active_memory, path)
@@ -286,16 +301,19 @@ def write_ai_notes(vault: Path, raw_name: str, fragments: list):
 
 
 def update_tag_candidates(memory: dict, tags: list):
-    """更新 tag 候选统计。Phase 1 只累计 count，不升级。"""
+    """更新 tag 候选统计。count ≥ 3 升级为 active。"""
     candidates = memory.setdefault("tag_candidates", {})
     tag_pattern = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-    for tag in tags:
+    for tag in dict.fromkeys(tags):
         if not tag_pattern.match(tag):
             logger.warning(f"已忽略候选 tag {tag}：格式非法（要求英文小写连字符，如 system-design）")
             continue
         if tag not in candidates:
             candidates[tag] = {"count": 0, "status": "pending"}
         candidates[tag]["count"] += 1
+    for info in candidates.values():
+        if info["count"] >= 3:
+            info["status"] = "active"
 
 
 def title_to_slug(title: str) -> str:

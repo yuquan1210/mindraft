@@ -1,0 +1,6 @@
+name: summary_style
+description: summary_style
+applies_to:
+- dashboard_summary
+rules:
+- 每日洞察不超过 150 字，五域摘要各用一句话。
