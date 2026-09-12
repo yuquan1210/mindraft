@@ -193,3 +193,14 @@ def test_analyze_dry_run_does_not_write(tmp_path):
     assert fake.call_count == 1
     assert path.read_bytes() == before
     assert not data_dir.exists()
+
+
+def test_partial_dashboard_publication_invalidates_cache(tmp_path):
+    config = _make_vault(tmp_path / 'vault')
+    data_dir = tmp_path / 'data'
+    _run_with_fake_llm(config, data_dir)
+    profile_path = data_dir / 'profile.json'
+    profile = json.loads(profile_path.read_text())
+    profile['memory_hash'] = 'different-generation'
+    profile_path.write_text(json.dumps(profile))
+    assert _run_with_fake_llm(config, data_dir).call_count == 1

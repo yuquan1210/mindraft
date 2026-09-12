@@ -7,9 +7,9 @@
 
 ## 项目状态
 
-**当前阶段**：Phase 3 实现完成，mock 回归通过；真实 LLM 与人工质量验收待完成。
+**当前阶段**：Phase 1–3 ✅ 完成；2026-09-12 用户确认 API 配置与人工测试通过。当前进行核心流程复核和重构，Phase 4 未启动。
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
-**最后更新**：2026-08-31
+**最后更新**：2026-09-12
 
 ---
 
@@ -30,8 +30,8 @@
 
 | 项 | 内容 |
 |----|------|
-| **决策** | LLM 每次调用只接收 `active_memory`（~600 tokens）+ 当前笔记，不堆积原始笔记全文 |
-| **理由** | 保证 token 消耗恒定，笔记量从 10 篇增长到 10,000 篇，LLM 调用成本不变 |
+| **决策** | LLM 每次调用只接收 `active_memory`（默认 1500 token 软阈值，Phase 3 两区结构）+ 当前笔记，不堆积原始笔记全文 |
+| **理由** | 避免历史上下文随笔记总数线性增长；实际调用成本仍取决于新笔记长度、压缩结果与重试 |
 | **影响** | 历史笔记的信息通过 memory 蒸馏保留，不以原文形式出现 |
 | **状态** | ✅ 已确认 |
 
@@ -43,7 +43,7 @@
 |----|------|
 | **决策** | `memory_updates` 只允许 `APPEND_TO` 和 `SET_IF_NEW` 两种操作，LLM 返回 DELETE / OVERWRITE 时直接忽略 |
 | **理由** | 历史信号永远有价值；矛盾信号本身也是观察数据（标记为"存在矛盾信号"而非删除）；防止 AI 幻觉误删数据 |
-| **影响** | `apply_memory_updates()` 中的 `case _: pass` 是安全阀，不可删除 |
+| **影响** | `schemas.py` 约束合法 action、字段路径与类型，`apply_memory_updates()` 再次验证并忽略非法更新（ADR-018） |
 | **状态** | ✅ 已确认 |
 
 ---
@@ -85,8 +85,8 @@
 
 | 项 | 内容 |
 |----|------|
-| **决策** | `avatar_data.json` 数据契约固定不变；渲染器（TextCard / PixelArt / Game）可替换，不影响数据层 |
-| **理由** | Phase 1 用 TextCardRenderer 快速验证，Phase 2 无缝升级 PixelArtRenderer，不需要改数据结构 |
+| **决策** | `avatar_data.json` 数据契约固定不变；渲染器（TextCard / PixelWorld，ADR-015 更新）可替换，不影响数据层 |
+| **理由** | Phase 4 用 TextCardRenderer，Phase 6–7 增加 PixelWorld 渲染与 AI 导演，不需要改数据结构 |
 | **影响** | `avatar_data.json` 的字段结构在 Phase 0 就要最终确定，后续阶段只扩展、不重构 |
 | **状态** | ✅ 已确认 |
 
@@ -200,6 +200,16 @@
 
 ---
 
+### ADR-018：核心状态边界与保守去重（2026-09-12 复核）
+
+- 初始记忆字段统一由 `memory_state.py` 定义；`schemas.py` 据此生成 memory_updates 的路径/类型约束，处理和分析共用严格读取。仅缺文件可视作新记忆，坏文件不得降级为空数据覆盖展示。
+- 每篇笔记先在副本上应用更新，成功 checkpoint 后再成为下一篇的上下文。可捕获的输出/状态写入失败清理本次新建 ai_notes，并保留旧内存状态。
+- 原先字符集合相似度和子串去重会丢弃否定句/新增限定条件，违背 ADR-003。改为仅大小写/空白归一后的精确去重；近似表达留给可归档的压缩阶段处理。
+- rebuild、旧状态迁移均放入进程锁内；`--dashboard` 不迁移状态；dry-run 可读取旧布局但不移动文件。
+- 不改变既有记忆格式，不自动重建用户 vault。各 Markdown 与 memory.json 仍非跨文件事务：进程被强杀于两者写入间可能留下孤立 AI 笔记；事务日志/重放作为后续可靠性增强项，当前不承诺跨文件 crash 原子性。
+
+---
+
 ## 实现阶段状态
 
 | 阶段 | 状态 | 完成日期 | 核心产物 |
@@ -207,7 +217,7 @@
 | Phase 0：基础骨架 | ✅ 已完成 | 2026-07-25 | `.gitignore`、`.env.example`、`requirements.txt`、`config.yml`、LLM 抽象层、`run.py` 骨架、基础设施（`utils.py`、`schemas.py`、`prompts.py`） |
 | Phase 1：笔记处理核心 | ✅ 已完成 | 2026-07-26 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
 | Phase 2：Dashboard MVP | ✅ 已完成 | 2026-08-05 | `analyze.py`、Dashboard HTML/JS、`serve.py` |
-| Phase 3：记忆系统完善 | 实现完成，待人工验收 | 2026-09-07 | 记忆压缩、统一归档、MBTI 描述、Road Map |
+| Phase 3：记忆系统完善 | ✅ 已完成人工验收 | 2026-09-12 | 记忆压缩、统一归档、MBTI 描述、Road Map |
 | Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
 | Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
 | Phase 6：像素世界渲染基建（无 AI） | ⬜ 未开始 | — | 素材 manifest、Kaplay.js、`pixel_world_renderer.js`、剧本执行器（ADR-015） |
@@ -806,3 +816,31 @@ mindraft/
 验证：`.venv/bin/python -m pytest tests/ --ignore=tests/test_llm_real.py` 通过 24 项；覆盖压缩原子性、失败重试/回滚、近期原文、token 目标、跨年周去重、标签升级、缓存与缺文件补生成、端到端 dry-run。Python 编译、JS 语法和 diff whitespace 检查通过；Node DOM smoke 验证了性格侧写、时间轴、活跃标签与生成文本按纯文本渲染（未进行浏览器截图验收）。
 
 真实验证限制：已执行 `run.py --dry-run`，LLM 返回 401（环境没有有效 DeepSeek API key）；全量 `pytest tests/` 同样在原有 `test_llm_real.py` 收集阶段被 401 阻断。真实压缩质量及用户 vault 人工验收尚未完成，未宣告进入 Phase 4。未执行 commit/push/分支操作。
+
+
+### 2026-09-12 Phase 1–3 复核与重构
+
+用户确认 API key 已正确配置、人工测试通过，因此将 Phase 3 标为已验收；9 月 7 日日志保留为当时环境记录，不再作为当前阶段阻塞条件。
+
+修复与简化：
+- 把初始状态、固定字段与严格加载集中到 `memory_state.py`；保留 `process_notes.create_initial_memory` 导入兼容性。笔记/摘要/压缩统一使用 `llm_calls.validated_call_with_retry`，避免多套重试语义。
+- 修复可捕获 checkpoint 失败污染后续状态，以及拆分笔记部分写入后遗留文件的问题；新增故障注入回归。
+- Schema 和应用层共同拒绝非法路径/类型，防止嵌套 SET_IF_NEW 意外替换已有字符串；保守去重保留矛盾观察（ADR-018）。
+- 修复锁获取晚于 rebuild/迁移；关闭日志旧 handler，JSONL 日志通过 json.dumps 转义引号、换行及异常堆栈。
+- Dashboard 摘要/性格侧写输入仅含 active_memory，标签只用于展示；两份 LLM 产物各带 memory_hash，检测部分发布或损坏缓存后重新生成；保留 active_memory 不变就复用 LLM 输出的决策。
+- 最近笔记处理时间优先取 frontmatter，避免文件复制改变显示时间。本地服务仅绑定 loopback，增加 ai_notes 的受限路由，使最近笔记链接可用，并阻止目录穿越及指向根目录外的软链接。
+- 测试脚本改为 pytest 实际收集的函数；mock 测试不读取用户 provider 配置，真实测试只在当前进程可见 key 时运行，不再在收集阶段发网络请求。
+- 清理 AGENTS、产品方案、tagging skill、renderer 配置注释的陈旧描述：summary_style 已完成、MBTI 共用摘要调用、两区结构、统一归档、软 token 目标、累计笔记数、批处理仍延后。历史 grilling 记录保持原样，由日期及 ADR-016/018 指明新决策。
+
+验证：`.venv/bin/python -m pytest tests/` 为 **45 passed, 2 skipped**；跳过的是本进程不可见 API key 的真实接口测试。新增本地 HTTP 实测确认 Dashboard 与生成笔记可读取，raw_notes、目录列表及路径穿越返回 404。Python 编译、JS 语法与 `git diff --check` 通过。已执行 `.venv/bin/python run.py --dry-run`，无业务状态写入；该 shell 未加载有效 key，真实摘要请求走 401 fallback，此结果不撤销用户已报告的人工验收。
+
+未修改原始笔记或执行 Git 提交/推送/分支操作。
+
+
+### 2026-09-12 README 使用指南补全
+
+- 补全首次安装、虚拟环境创建与 `source .venv/bin/activate`、provider/vault 配置、日常运行、全部 CLI 模式和重建语义。
+- 明确 `.env` 不自动加载，提供当前 shell 导出方式；同步 `.env.example` 注释，并标明 Replicate 属旧方案遗留。
+- 分开说明离线回归、全量测试、真实 API 测试和单用例测试；列出 pytest 单独安装、真实测试 skip/失败条件以及 dry-run 的真实调用语义。
+- 增加数据路径、处理限制、常见问题和设计文档导航。本次仅修改文档与示例注释。
+- 验证：实际激活虚拟环境后执行 `python run.py --help` 与离线回归，45 项通过；README 本地链接、代码围栏和 diff whitespace 检查通过。

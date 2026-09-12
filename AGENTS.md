@@ -2,7 +2,7 @@
 
 > 本文件是 AI Agent 的项目入口，每次会话自动读取。细节文档按需查阅：
 > - `doc/Mindraft.md`（产品方案与阶段设计）
-> - `doc/mindraft-log.md`（实现日志 + ADR-001~017，架构决策的唯一权威来源）
+> - `doc/mindraft-log.md`（实现日志 + ADR-001~018，架构决策的唯一权威来源）
 > - `doc/Mindraft-Vibe-Coding-Guide.md`（人机协作流程）
 
 ## 项目定位
@@ -16,9 +16,9 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 
 ## 当前状态
 
-- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。Phase 3 已实现（记忆压缩、跨周快照、性格侧写、时间轴），mock 回归通过，待真实 LLM 与人工质量验收，见 `doc/mindraft-log.md`。
+- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。Phase 3（记忆压缩、跨周快照、性格侧写、时间轴）✅ 完成；用户于 2026-09-12 确认 API 配置和人工测试通过。当前核心闭环已覆盖 Phase 1–3，下一阶段尚未启动，见 `doc/mindraft-log.md`。
 - 笔记重写已改为**按类别拆分**（ADR-017）：一篇原笔记由 LLM 一次调用拆分为 1~5 篇小笔记，分别写入 `ai_notes/{domain}/{subcategory}/`；domain 固定五域，subcategory 有 `config.yml → subcategory_vocabulary` 推荐词表（软约束）；`memory_updates`/`questions` 仍属整篇原笔记。
-- Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、`summary_style.yml`、笔记关联、URL 抓取。
+- Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、笔记关联、URL 抓取。
 - 形象规划：原「像素画形象」已替换为「AI 导演的像素小人世界」（ADR-015），拆为 Phase 6（Kaplay.js 渲染基建，无 AI）与 Phase 7（LLM 场景生成 + 增量进化）。
 - Phase 3 新增 `summary_style.yml`、`analysis_style.yml`、`memory_compression.yml`。热层五域字段是近期原文，`active_memory._condensed` 是浓缩区；`original_order` 跟踪原文顺序，`history_archive` 是历史唯一数据源。
 
@@ -33,6 +33,9 @@ mindraft/
 │   ├── llm_factory.py    # 按 config.llm_provider 返回 BaseLLM 实例
 │   ├── skill_loader.py   # 按 operation 拼装 system prompt（skills/*.yml）+ 注入 subcategory 词表
 │   ├── process_notes.py  # 笔记处理主流程（逐篇 checkpoint；一篇拆分为多篇 ai_note，ADR-017）
+│   ├── memory_state.py   # 初始记忆结构、字段路径、严格读取（兼容旧布局）
+│   ├── memory.py         # 两区压缩、统一归档、跨周快照
+│   ├── llm_calls.py      # 所有业务 LLM 操作共用的校验与一次重试
 │   ├── note_filter.py    # 预筛选与分组
 │   ├── analyze.py        # 生成 dashboard/data/*.json
 │   ├── serve.py          # 本地静态服务
@@ -52,11 +55,11 @@ mindraft/
 ```bash
 pip install -r requirements.txt   # 安装依赖（可选：anthropic、tiktoken）
 python run.py                     # 完整流程：处理新笔记 → 生成 dashboard 数据 → 启动服务并打开浏览器
-python run.py --analyze           # 只做 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务；memory 未变化时跳过生成
+python run.py --analyze           # 只做 AI 分析（处理新笔记 + 生成 dashboard 数据），不启动服务；active_memory 未变化时复用摘要/性格侧写，统计与时间轴仍更新
 python run.py --dashboard         # 只启动 dashboard 服务并打开浏览器，不做任何分析
 python run.py --rebuild           # 清空全部分析结果（ai_notes/、memory.json、dashboard 数据、process_log）后走完整流程
 python run.py --dry-run           # 干跑：调 LLM 但不写文件、不启动服务
-python -m pytest tests/           # 测试（test_llm_real.py 需要真实 API key）
+python -m pytest tests/           # 测试（test_llm_real.py 有配置 key 时执行，否则 skip；测试依赖 pytest）
 ```
 
 ## 硬约束
@@ -72,5 +75,5 @@ python -m pytest tests/           # 测试（test_llm_real.py 需要真实 API k
 ## 工作方式
 
 - 实现新功能前：读本文件 → 按阶段精读 `doc/Mindraft.md` §9 对应 Phase 的目标与验收标准 → 需要决策依据时查 `doc/mindraft-log.md` 的 ADR。
-- 数据结构与代码细节以 `scripts/` 实际代码为准（`schemas.py`、`process_notes.py` 是唯一事实源），不要凭文档中的示例代码实现。
+- 数据结构与代码细节以 `scripts/` 实际代码为准（`memory_state.py` 定义记忆字段，`schemas.py` 定义校验契约，`process_notes.py` 定义处理流程），不要凭文档中的示例代码实现。
 - 验证改动：`python run.py --dry-run` + `python -m pytest tests/`。

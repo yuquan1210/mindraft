@@ -1,4 +1,5 @@
 from jsonschema import validate, ValidationError
+from scripts.memory_state import DOMAINS, LIST_PATHS, STRING_PATHS
 
 # 拆分后单篇小笔记的结构（process_note 返回 notes 数组的 item）
 NOTE_FRAGMENT_SCHEMA = {
@@ -8,7 +9,7 @@ NOTE_FRAGMENT_SCHEMA = {
         "title": {"type": "string", "minLength": 1, "maxLength": 80},
         "domain": {
             "type": "string",
-            "enum": ["work", "life", "growth", "wellbeing", "identity"],
+            "enum": list(DOMAINS),
         },
         "subcategory": {
             "type": "string",
@@ -29,6 +30,21 @@ NOTE_FRAGMENT_SCHEMA = {
     },
 }
 
+# Updates may only address a known leaf with the matching value type.
+MEMORY_UPDATE_SCHEMA = {
+    "type": "object", "required": ["action", "path", "value"],
+    "oneOf": [
+        {"properties": {"action": {"const": "APPEND_TO"}, "path": {"enum": list(LIST_PATHS)},
+                        "value": {"type": "string", "minLength": 1}}},
+        {"properties": {"action": {"const": "SET_IF_NEW"}, "path": {"enum": list(STRING_PATHS)},
+                        "value": {"type": "string", "minLength": 1}}},
+        {"properties": {"action": {"const": "SET_IF_NEW"}, "path": {"enum": list(LIST_PATHS)},
+                        "value": {"type": "array", "items": {"type": "string"}}}},
+    ],
+    "additionalProperties": False,
+    "properties": {"action": {}, "path": {}, "value": {}},
+}
+
 # process_note 操作的 LLM 返回结构：
 # 一篇原笔记按内容类别拆分为 1~5 篇小笔记；memory_updates / questions 属于整篇原笔记
 PROCESS_NOTE_SCHEMA = {
@@ -44,15 +60,7 @@ PROCESS_NOTE_SCHEMA = {
         "questions": {"type": "array", "items": {"type": "string"}},
         "memory_updates": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["action", "path", "value"],
-                "properties": {
-                    "action": {"type": "string", "enum": ["APPEND_TO", "SET_IF_NEW"]},
-                    "path": {"type": "string"},
-                    "value": {},
-                },
-            },
+            "items": MEMORY_UPDATE_SCHEMA,
         },
     },
 }
@@ -91,7 +99,33 @@ def validate_llm_output(data: dict, schema: dict) -> tuple[bool, str]:
 
 COMPRESSION_SCHEMA = {
     "type": "object",
-    "required": ["work", "life", "growth", "wellbeing", "identity"],
-    "properties": {d: {"type": "string"} for d in ["work", "life", "growth", "wellbeing", "identity"]},
+    "required": list(DOMAINS),
+    "properties": {d: {"type": "string"} for d in DOMAINS},
     "additionalProperties": False,
+}
+
+
+# Accept legacy optional fields and additional state, but reject corrupt core types.
+MEMORY_STATE_SCHEMA = {
+    "type": "object", "required": ["meta", "active_memory"],
+    "properties": {
+        "meta": {"type": "object", "properties": {
+            "processed_notes": {"type": "array", "items": {"type": "string"}},
+            "version": {"type": "integer", "minimum": 0},
+            "last_updated": {"type": "string"},
+            "weekly_checkpoint": {"type": "string"},
+        }},
+        "active_memory": {"type": "object", "properties": {
+            **{d: {"type": "object", "additionalProperties": {"oneOf": [
+                {"type": "string"}, {"type": "array", "items": {"type": "string"}}
+            ]}} for d in DOMAINS},
+            "_condensed": COMPRESSION_SCHEMA,
+        }},
+        "history_archive": {"type": "array", "items": {"type": "object"}},
+        "tag_candidates": {"type": "object", "additionalProperties": {
+            "type": "object", "required": ["count", "status"], "properties": {
+                "count": {"type": "integer", "minimum": 0},
+                "status": {"enum": ["pending", "active"]},
+            }}},
+    },
 }

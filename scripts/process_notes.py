@@ -10,7 +10,9 @@ import yaml
 
 from scripts.memory import compress_memory, maybe_generate_weekly_snapshot, sync_original_order
 from scripts.llm_factory import get_llm
-from scripts.schemas import PROCESS_NOTE_SCHEMA, validate_llm_output
+from scripts.schemas import PROCESS_NOTE_SCHEMA, MEMORY_UPDATE_SCHEMA, validate_llm_output
+from scripts.memory_state import create_initial_memory, load_memory
+from scripts.llm_calls import validated_call_with_retry
 from scripts.prompts import NOTE_PROCESSOR_ROLE
 from scripts.skill_loader import build_system_prompt
 from scripts.note_filter import should_skip_note, group_notes_for_processing
@@ -28,66 +30,11 @@ from scripts.utils import (
 logger = logging.getLogger("mindraft")
 
 
-def create_initial_memory() -> dict:
-    """创建初始 memory.json 结构（五域硬编码）。"""
-    return {
-        "meta": {
-            "version": 0,
-            "last_updated": "",
-            "processed_notes": [],
-            "active_memory_token_estimate": 0,
-        },
-        "active_memory": {
-            "work": {
-                "current_focus": "",
-                "ongoing_projects": [],
-                "goals": [],
-                "energy_pattern": "",
-                "stress_sources": [],
-                "recurring_signals": [],
-                "recent_mood_trend": "",
-            },
-            "life": {
-                "current_routines": [],
-                "interests_observed": [],
-                "social_connections": [],
-                "places": [],
-                "important_people": [],
-                "recurring_signals": [],
-                "recent_mood_trend": "",
-            },
-            "growth": {
-                "learning_topics": [],
-                "active_skills": [],
-                "challenges": [],
-                "recurring_signals": [],
-            },
-            "wellbeing": {
-                "physical_patterns": [],
-                "mental_patterns": [],
-                "recovery_activities": [],
-                "recurring_signals": [],
-            },
-            "identity": {
-                "core_traits": [],
-                "values": [],
-                "self_perception": [],
-                "mbti_hints": [],
-                "recurring_signals": [],
-            },
-        },
-        "tag_candidates": {},
-        "history_archive": [],
-    }
-
-
 def process_new_notes(config: dict, dry_run: bool = False):
     """处理 raw_notes 中的新笔记。"""
     vault = Path(config["notes_vault_path"]).expanduser()
     memory_path = get_memory_path(config)
-    memory = create_initial_memory()
-    if memory_path.exists():
-        memory = json.loads(memory_path.read_text(encoding="utf-8"))
+    memory = load_memory(memory_path)
 
     previous_tags = deepcopy(memory.get("tag_candidates", {}))
     update_tag_candidates(memory, [])
@@ -132,6 +79,7 @@ def process_new_notes(config: dict, dry_run: bool = False):
     for group in groups:
         # Phase 1 每组只有一篇笔记
         note = group[0]
+        written_paths = []
         try:
             result = _call_with_retry(note, memory, llm, config)
             fragments = result["notes"]
@@ -140,27 +88,31 @@ def process_new_notes(config: dict, dry_run: bool = False):
             if dry_run:
                 logger.info(f"[DRY-RUN] 将处理 {note['name']} → {len(fragments)} 篇: {categories}")
 
-            if not dry_run:
-                write_ai_notes(vault, note["name"], fragments)
-            apply_memory_updates(memory["active_memory"], result.get("memory_updates", []))
+            candidate = deepcopy(memory)
+            apply_memory_updates(candidate["active_memory"], result.get("memory_updates", []))
             all_tags = [tag for f in fragments for tag in f.get("tags", [])]
-            update_tag_candidates(memory, all_tags)
-            memory["meta"]["processed_notes"].append(note["name"])
-            memory["meta"]["last_updated"] = today_iso()
-            memory["meta"]["version"] += 1
-            memory["meta"]["active_memory_token_estimate"] = token_estimate(
-                json.dumps(memory["active_memory"], ensure_ascii=False), token_method
+            update_tag_candidates(candidate, all_tags)
+            candidate["meta"]["processed_notes"].append(note["name"])
+            candidate["meta"]["last_updated"] = today_iso()
+            candidate["meta"]["version"] += 1
+            candidate["meta"]["active_memory_token_estimate"] = token_estimate(
+                json.dumps(candidate["active_memory"], ensure_ascii=False), token_method
             )
-            sync_original_order(memory)
+            sync_original_order(candidate)
             if not dry_run:
-                safe_write_json(str(memory_path), memory)
+                written_paths = write_ai_notes(vault, note["name"], fragments)
+                safe_write_json(str(memory_path), candidate)
+            memory = candidate
+            written_paths = []  # Checkpoint committed; never roll back successful outputs.
             compress_memory(memory, llm, config, dry_run)
             logger.info(f"✓ 已处理 {note['name']} → {len(fragments)} 篇: {categories}")
         except Exception as e:
+            _remove_uncommitted_notes(written_paths)
             logger.error(f"处理笔记 {note['name']} 失败：{_friendly_error(e)}（已跳过该笔记，下次运行时会重新处理）")
             continue
 
     return memory
+
 
 def process_single_note(note: dict, memory: dict, llm, config: dict) -> dict:
     """调用 LLM 处理单篇笔记。"""
@@ -178,30 +130,17 @@ def process_single_note(note: dict, memory: dict, llm, config: dict) -> dict:
 
 def _call_with_retry(note: dict, memory: dict, llm, config: dict) -> dict:
     """调用 LLM 处理单篇笔记并校验返回，失败时重试一次。"""
-    last_error = None
-    for attempt in range(2):
-        try:
-            result = process_single_note(note, memory, llm, config)
-            is_valid, error = validate_llm_output(result, PROCESS_NOTE_SCHEMA)
-            if not is_valid:
-                raise ValueError(error)
-            vocabulary = config.get("subcategory_vocabulary") or {}
-            for fragment in result["notes"]:
-                # LLM 返回 domain + subcategory，join 为 category 供下游使用
-                fragment["category"] = f"{fragment['domain']}/{fragment['subcategory']}"
-                # 词表为软约束：词表外的 subcategory 接受但记录日志，便于后续回填
-                known = vocabulary.get(fragment["domain"], [])
-                if known and fragment["subcategory"] not in known:
-                    logger.warning(
-                        f"笔记 {note['name']} 使用了词表外的 subcategory "
-                        f"{fragment['category']}（可考虑回填 config.subcategory_vocabulary）"
-                    )
-            return result
-        except Exception as e:
-            last_error = e
-            if attempt == 0:
-                logger.warning(f"笔记 {note['name']} 首次处理失败（{_friendly_error(e)}），自动重试一次")
-    raise last_error
+    result = deepcopy(validated_call_with_retry(
+        lambda: process_single_note(note, memory, llm, config), PROCESS_NOTE_SCHEMA
+    ))
+    vocabulary = config.get("subcategory_vocabulary") or {}
+    for fragment in result["notes"]:
+        fragment["category"] = f"{fragment['domain']}/{fragment['subcategory']}"
+        known = vocabulary.get(fragment["domain"], [])
+        if known and fragment["subcategory"] not in known:
+            logger.warning("笔记 %s 使用了词表外的 subcategory %s（可考虑回填 config.subcategory_vocabulary）",
+                           note["name"], fragment["category"])
+    return result
 
 
 def _friendly_error(e: Exception) -> str:
@@ -217,11 +156,13 @@ def _friendly_error(e: Exception) -> str:
 def apply_memory_updates(active_memory: dict, updates: list):
     """应用 LLM 返回的记忆更新指令。"""
     for update in updates:
+        valid, error = validate_llm_output(update, MEMORY_UPDATE_SCHEMA)
+        if not valid:
+            logger.warning("已忽略非法记忆更新：%s", error)
+            continue
         action = update.get("action")
         path = update.get("path")
         value = update.get("value")
-        if not isinstance(path, str) or path.split(".")[0] not in {"work", "life", "growth", "wellbeing", "identity"}:
-            continue
 
         if action == "APPEND_TO":
             target = get_nested(active_memory, path)
@@ -264,6 +205,24 @@ _FrontmatterDumper.add_representer(
 
 def write_ai_notes(vault: Path, raw_name: str, fragments: list):
     """将拆分后的小笔记逐篇写入 ai_notes/ 目录。"""
+    written = []
+    try:
+        _write_ai_note_fragments(vault, raw_name, fragments, written)
+    except Exception:
+        _remove_uncommitted_notes(written)
+        raise
+    return written
+
+
+def _remove_uncommitted_notes(paths):
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("无法清理未提交的 AI 笔记 %s", path)
+
+
+def _write_ai_note_fragments(vault, raw_name, fragments, written):
     total = len(fragments)
     for index, fragment in enumerate(fragments, start=1):
         category = fragment["category"]
@@ -297,7 +256,9 @@ def write_ai_notes(vault: Path, raw_name: str, fragments: list):
         content += "---\n\n"
         content += fragment["rewritten_content"]
 
-        target_path.write_text(content, encoding="utf-8")
+        with target_path.open("x", encoding="utf-8") as output:
+            written.append(target_path)
+            output.write(content)
 
 
 def update_tag_candidates(memory: dict, tags: list):

@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from scripts.memory import maybe_generate_weekly_snapshot, observations, iso_week
+from scripts.memory_state import DOMAINS, load_memory as _load_memory
 from scripts.skill_loader import build_system_prompt
 from scripts.llm_calls import call_with_retry
 from scripts.llm_factory import get_llm
@@ -17,7 +18,6 @@ from scripts.utils import safe_write_json, load_config, get_memory_path
 
 logger = logging.getLogger("mindraft")
 
-DOMAINS = ["work", "life", "growth", "wellbeing", "identity"]
 FALLBACK_DAILY_INSIGHT = "今日洞察生成失败，请稍后重试。"
 
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
@@ -53,9 +53,11 @@ def generate_dashboard_data(config: dict, dry_run: bool = False, memory=None):
         summaries = json.loads((dashboard_data_dir / "summaries.json").read_text(encoding="utf-8"))
         profile = json.loads((dashboard_data_dir / "profile.json").read_text(encoding="utf-8"))
     else:
-        summaries = _generate_summaries(memory, config, dry_run)
+        summaries = _generate_summaries(memory, config)
         profile = {"generated_at": summaries["generated_at"], "fallback": summaries["fallback"],
                    "mbti_description": summaries.pop("mbti_description", "性格描述暂不可用，请稍后重试。")}
+    summaries["memory_hash"] = memory_hash
+    profile["memory_hash"] = memory_hash
     summaries["tag_candidates"] = memory.get("tag_candidates", {})
     roadmap = _build_roadmap(memory)
 
@@ -109,31 +111,20 @@ def _dashboard_up_to_date(dashboard_data_dir: Path, memory_hash: str) -> bool:
         existing = json.loads(config_path.read_text(encoding="utf-8"))
         for name in data_files:
             data = json.loads((dashboard_data_dir / name).read_text(encoding="utf-8"))
-            if data.get("fallback"):
+            if not isinstance(data, dict) or data.get("fallback"):
+                return False
+            if name in {"summaries.json", "profile.json"} and data.get("memory_hash") != memory_hash:
+                return False
+            if name == "summaries.json" and (
+                not isinstance(data.get("daily_insight"), str)
+                or not isinstance(data.get("domain_summaries"), dict)
+            ):
+                return False
+            if name == "profile.json" and not isinstance(data.get("mbti_description"), str):
                 return False
     except Exception:
         return False
     return existing.get("memory_hash") == memory_hash
-
-
-def _load_memory(memory_path: Path) -> dict:
-    """读取 {notes_vault}/.mindraft/memory.json，不存在则返回空结构。"""
-    if not memory_path.exists():
-        logger.warning("memory.json 不存在，使用空记忆结构生成 dashboard")
-        return {
-            "meta": {"processed_notes": []},
-            "active_memory": {d: {} for d in DOMAINS},
-            "tag_candidates": {},
-        }
-    try:
-        return json.loads(memory_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.error(f"读取 memory.json 失败：{e}，使用空记忆结构")
-        return {
-            "meta": {"processed_notes": []},
-            "active_memory": {d: {} for d in DOMAINS},
-            "tag_candidates": {},
-        }
 
 
 def _build_recent_notes(memory: dict, ai_notes_dir: Path) -> dict:
@@ -167,7 +158,7 @@ def _build_recent_notes(memory: dict, ai_notes_dir: Path) -> dict:
                 if category not in DOMAINS:
                     continue
                 stat = ai_path.stat()
-                processed_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                processed_at = frontmatter.get("processed_at") or datetime.fromtimestamp(stat.st_mtime).isoformat()
                 notes.append(
                     {
                         "filename": raw_name,
@@ -208,7 +199,7 @@ def _build_stats(memory: dict, ai_notes_dir: Path) -> dict:
     }
 
 
-def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
+def _generate_summaries(memory: dict, config: dict) -> dict:
     """调用 LLM 生成每日一句和五域摘要。失败时返回 fallback。"""
     active_memory = memory.get("active_memory", {d: {} for d in DOMAINS})
     tag_candidates = memory.get("tag_candidates", {})
@@ -225,7 +216,7 @@ def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
 
     try:
         llm = get_llm(config)
-        result = _call_summary_llm(active_memory, tag_candidates, llm, config)
+        result = _call_summary_llm(active_memory, llm, config)
         summaries["mbti_description"] = result["mbti_description"]
         summaries["daily_insight"] = result.get("daily_insight", "")
         summaries["domain_summaries"] = {
@@ -243,14 +234,11 @@ def _generate_summaries(memory: dict, config: dict, dry_run: bool) -> dict:
     return summaries
 
 
-def _call_summary_llm(active_memory: dict, tag_candidates: dict, llm, config=None) -> dict:
+def _call_summary_llm(active_memory: dict, llm, config=None) -> dict:
     """调用 LLM 生成 dashboard 摘要。"""
     system = build_system_prompt("dashboard_summary", DASHBOARD_SUMMARY_ROLE, config or {})
     user_content = f"""用户的 active_memory：
 {json.dumps(active_memory, ensure_ascii=False, indent=2)}
-
-tag_candidates：
-{json.dumps(tag_candidates, ensure_ascii=False, indent=2)}
 
 请生成 dashboard summaries。"""
     return call_with_retry(llm, system, user_content, DASHBOARD_SUMMARY_SCHEMA)

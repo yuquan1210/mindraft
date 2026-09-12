@@ -22,6 +22,8 @@ def main():
                         help="调用 LLM 但不写入任何业务状态文件、不启动服务")
     args = parser.parse_args()
 
+    if args.dashboard and (args.dry_run or args.analyze):
+        parser.error("--dashboard 不能与 --dry-run / --analyze 同时使用")
     if args.rebuild and args.dry_run:
         parser.error("--rebuild 会删除文件，不能与 --dry-run 同时使用")
     if args.rebuild and args.dashboard:
@@ -29,54 +31,42 @@ def main():
 
     config = load_config()
 
-    # rebuild 的清空必须先于 setup_logging：日志文件句柄一旦打开，
-    # 删除 process_log 后新日志会写入已删除的 inode
-    removed = []
-    if args.rebuild:
-        from scripts.utils import reset_analysis_state
-
-        removed = reset_analysis_state(config)
-
-    logger = setup_logging(config)
-
-    logger.info(f"Mindraft 启动 | dry_run={args.dry_run}")
-
-    # 旧布局迁移：{vault}/analysis/memory.json → {vault}/.mindraft/memory.json
-    if not args.dry_run:
-        migrate_legacy_analysis_state(config)
-
-    if args.rebuild:
-        if removed:
-            logger.info("--rebuild：已清空分析结果：")
-            for path in removed:
-                logger.info(f"  已删除 {path}")
-        else:
-            logger.info("--rebuild：没有需要清空的分析结果")
-
+    # Display-only mode must not migrate or change analysis state.
     if args.dashboard:
         from scripts.serve import start_server
 
+        setup_logging(config)
         start_server(config, open_browser=True)
         return
 
-    # 获取进程锁，防止并发执行（dry-run 模式下也获取锁，保证并发安全）
     lock = get_process_lock()
     try:
         with lock:
+            # Acquire before every mutation, including rebuild, migration and logs.
+            removed = []
+            if args.rebuild:
+                from scripts.utils import reset_analysis_state
+
+                removed = reset_analysis_state(config)
+            logger = setup_logging(config)
+            logger.info("Mindraft 启动 | dry_run=%s", args.dry_run)
+            if not args.dry_run:
+                migrate_legacy_analysis_state(config)
+            for path in removed:
+                logger.info("--rebuild：已清空 %s", path)
+
             from scripts.process_notes import process_new_notes
             from scripts.analyze import generate_dashboard_data
 
+            memory = process_new_notes(config, dry_run=args.dry_run)
+            generate_dashboard_data(config, dry_run=args.dry_run, memory=memory)
             if args.dry_run:
-                logger.info("--dry-run 模式：调用 LLM，但不写入任何业务状态文件")
-                memory = process_new_notes(config, dry_run=True)
-                generate_dashboard_data(config, dry_run=True, memory=memory)
                 logger.info("Dry-run 完成")
                 return
-
-            process_new_notes(config, dry_run=False)
-            generate_dashboard_data(config, dry_run=False)
     except Timeout:
-        logger.error("另一个 Mindraft 实例正在运行，请等待其完成后再试")
+        import logging
+
+        logging.getLogger("mindraft").error("另一个 Mindraft 实例正在运行，请等待其完成后再试")
         raise SystemExit(1)
 
     # --analyze：只做 AI 分析，不启动服务

@@ -110,7 +110,7 @@ PROFILE_ROLE = """你是 Mindraft 性格分析助手。
 中文输出，3-5段，每段2-4句话。"""
 
 DASHBOARD_SUMMARY_ROLE = """你是 Mindraft Dashboard 摘要助手。
-你的任务是基于用户的 active_memory 五域摘要和 tag_candidates，生成一段有情绪、有叙事色彩的每日洞察，以及五个域的一句话摘要。
+你的任务是基于用户的 active_memory（五域原文与浓缩区），生成一段有情绪、有叙事色彩的每日洞察，以及五个域的一句话摘要。
 
 ## 输出要求
 

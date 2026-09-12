@@ -2,7 +2,7 @@
 ## 产品方案文档 v2.0
 
 > 最后更新：2026-06-19  
-> 相关文档：[实现日志](Mindraft-Log.md) · Agent 入口：[../AGENTS.md](../AGENTS.md)
+> 相关文档：[实现日志](mindraft-log.md) · Agent 入口：[../AGENTS.md](../AGENTS.md)
 
 ---
 
@@ -118,7 +118,7 @@ Mindraft 作为旁观者，以局外人的眼光重新审视这些文字，
                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │              展示层：本地 Web Dashboard                   │
-│              http://localhost:8080                       │
+│              http://localhost:8765                       │
 │                                                          │
 │   字数趋势图 │ 活跃日历 │ 每日一句                        │
 │   MBTI 风格描述 │ Road Map │ Work Me │ Home Me           │
@@ -223,7 +223,7 @@ mindraft/
 │       ├── stats.json             # 字数 / 日历数据
 │       ├── summaries.json         # 每日摘要
 │       ├── recent_notes.json      # 最近处理笔记列表
-│       ├── roadmap.json           # 归档历史时间轴（Phase 3 规划，ADR-016 单数据源）
+│       ├── roadmap.json           # 归档历史时间轴（已实现，ADR-016 单数据源）
 │       ├── avatar_data.json       # 画像数据（Phase 4 规划）
 │       └── scene.json             # 像素世界场景剧本（Phase 7 规划）
 │
@@ -309,17 +309,13 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 
 #### Skill 与操作的对应关系
 
-| 操作 | 挂载的 Skill |
-|------|-------------|
-| `process_note` | `note_style` + `tagging` + `json_output` |
-| `enrich_with_link` | `note_style` |
-| `generate_daily_summary` | `summary_style` |
-| `generate_profile` | `analysis_style` |
-| `generate_mbti_description` | `analysis_style` |
-| `generate_avatar_data` | `analysis_style` |
-| `compress_memory` | `memory_compression` |
+| 当前操作 | 挂载的 Skill | 输出 |
+|------|-------------|------|
+| `process_note` | `note_style` + `tagging` + `json_output` | 拆分笔记 + 记忆更新 |
+| `dashboard_summary` | `summary_style` + `analysis_style` | 每日洞察、五域摘要、性格侧写（同一次调用） |
+| `compress_memory` | `memory_compression` | 五域浓缩字符串 |
 
-> 当前实现中仅 `process_note` 经过 `skill_loader` 挂载 skill；dashboard 摘要直接使用 `DASHBOARD_SUMMARY_ROLE`，不挂 skill。表中其余 operation（`enrich_with_link`、`generate_profile`、`generate_mbti_description`、`generate_avatar_data`、`compress_memory`）为 Phase 3-5 规划，代码中尚不存在。
+> 链接增强、avatar 生成是后续规划操作，尚未接入。`profile.json` 当前由 `dashboard_summary` 拆出，不额外调用 `generate_profile` 或 `generate_mbti_description`。
 
 → 实现代码：`scripts/skill_loader.py`
 
@@ -335,7 +331,7 @@ run.py（在此获取进程锁，防止并发执行；--dashboard 模式不获�
   └─► process_notes.py
         │
         ├── 扫描 raw_notes/
-        ├── 对比 memory.processed_notes（找出未处理的笔记）
+        ├── 对比 memory.meta.processed_notes（找出未处理的笔记）
         │
         ├── [预筛选] 跳过无意义笔记：
         │     · 空文件
@@ -346,7 +342,7 @@ run.py（在此获取进程锁，防止并发执行；--dashboard 模式不获�
         ├── [分组] 当前逐篇独立处理；
         │     短笔记合并为一批（一次 LLM 调用）是 Phase 1 延后项
         │
-        └── for each 组（按日期升序）：
+        └── for each 组（按文件名升序）：
               │
               ├── 1. 加载 memory.json 中的 active_memory
               ├── 2. build_system_prompt("process_note", base_role)
@@ -360,13 +356,13 @@ run.py（在此获取进程锁，防止并发执行；--dashboard 模式不获�
               │       （questions 字段保留在契约中，当前代码不消费；
               │         追问实际由 note_style 规则以 <!-- ❓ --> 注释内嵌正文实现）
               │
-              ├── 6. 写入 ai_notes/{category}/{title-slug}.md（重名追加 -2、-3）
-              ├── 7. apply_memory_updates() → 更新 active_memory
-              ├── 8. 将笔记名加入 memory.processed_notes
+              ├── 6. 在候选副本上应用 memory_updates、标签与处理状态
+              ├── 7. 写入 ai_notes/{category}/{title-slug}.md（重名追加 -2、-3）
+              ├── 8. 将笔记名加入 memory.meta.processed_notes
               ├── 9. 原子写入 memory.json（逐篇 checkpoint，确保断点可恢复）
               │
               └── 10. if token_estimate(active_memory) > threshold:
-                          compress_memory()（Phase 3 规划，当前未实现）
+                          compress_memory()（Phase 3 已实现）
 ```
 
 #### AI 处理后笔记的 frontmatter 格式
@@ -379,6 +375,7 @@ category: work/daily
 tags: [backend, sprint]
 summary: "今天完成了登录模块的代码审查，发现权限设计有漏洞"
 source: raw_notes/2026-06-15.md
+part: 1/2
 ---
 
 ...（AI 对原始笔记的清晰重写版本：结构化表达，补充必要背景知识）...
@@ -388,16 +385,16 @@ source: raw_notes/2026-06-15.md
 <!-- ❓ 待补充：这里提到的"权限漏洞"具体是哪种场景？AI 无法从现有上下文推断，请补充更多信息。 -->
 ```
 
-> frontmatter 字段与 `write_ai_note()` 实际输出一致；`related`（关联笔记列表）属 Phase 5 规划，当前不写入。
+> frontmatter 字段与 `write_ai_notes()` 实际输出一致；`related`（关联笔记列表）属 Phase 5 规划，当前不写入。
 
 #### Tag 创建规则
 
 ```
-候选阶段：每篇笔记处理时，AI 提出 ≤3 个候选 tag
+候选阶段：每篇拆分后的 ai_note，AI 提出 ≤3 个候选 tag
           → 立即写入该篇 ai_note 的 frontmatter
-          → 同时存入 memory.tag_candidates 累计 count，status: "pending"
+          → 同时存入 memory.tag_candidates；每个 tag 在同一原笔记内去重后累计 count
 
-升级规则（Phase 3 规划，当前未实现）：
+升级规则（Phase 3 已实现）：
           当 tag_candidates 中某个 tag 的 count ≥ 3
           → status 升级为 "active"
 
@@ -446,7 +443,7 @@ LLM 每次处理笔记时，只看两样东西：
   ② 当前这一篇新笔记（~100-200 字）
 
 处理后更新 active_memory，而不是堆积原文
-→ 无论写了 100 篇还是 10000 篇，每次 LLM 输入的 token 消耗恒定
+→ 历史上下文不随笔记总数线性增长；阈值是软目标，超长新笔记、原文保留和压缩失败均可能暂时超标
 ```
 
 #### 双层记忆结构
@@ -457,7 +454,8 @@ memory.json
 ├── active_memory  (热层)
 │     · 每次处理笔记时发给 LLM
 │     · 超过阈值（config: memory.active_memory_token_threshold，默认 1500 tokens）时压缩
-│     · 内容只增不减（压缩 ≠ 删除）
+│     · 五域字段保留近期原文；_condensed 保存较早观察的浓缩字符串
+│     · 热层可压缩，历史完整性由 history_archive 快照保证
 │
 └── history_archive  (冷层)
       · 永久追加，从不删除
@@ -466,7 +464,7 @@ memory.json
       · 每次压缩前，将 active_memory 完整归档于此
 ```
 
-#### memory.json 完整结构
+#### memory.json 示例（字段定义以代码为准）
 
 ```json
 {
@@ -551,15 +549,17 @@ memory.json
 }
 ```
 
+> Phase 3 还保存 `active_memory._condensed`（五域浓缩字符串）、`original_order`（原文观察追加顺序，不发送给 LLM）与 `meta.weekly_checkpoint`（周快照去重游标）。初始结构和兼容读取见 `memory_state.py`，校验见 `schemas.py`。
+
 > `trigger` 取值：`compression`（压缩前的归档）/ `weekly`（检测到跨周时的纯拷贝快照，热层不变，零 LLM）。统一归档设计见 ADR-016（取代 ADR-013，不再有独立 `snapshots/` 文件）。
 
 #### 追加更新规则
 
 LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE 直接忽略：
-- `APPEND_TO`：向指定数组追加新元素（语义去重后追加）
-- `SET_IF_NEW`：字段不存在或值为空（空串/空列表）时才写入
+- `APPEND_TO`：向已定义的字符串数组追加新字符串（仅忽略大小写和空白相同的重复项；保留相似但矛盾或更具体的观察）
+- `SET_IF_NEW`：已定义的字段不存在或值为空（空串/空列表）时才写入，字段类型必须匹配
 
-**System prompt 中写死的约束：**
+**Role Prompt 中固定的约束（代码同时校验路径和类型）：**
 
 > 你只能追加新的观察，不能修改或删除已有内容。
 > 如果新笔记与已有记忆存在矛盾，用 APPEND_TO 追加新信号，而不是覆盖旧信号。
@@ -567,7 +567,7 @@ LLM 返回的 `memory_updates` 只允许两种操作，任何 DELETE / OVERWRITE
 
 → 实现代码：`scripts/process_notes.py`、`scripts/note_filter.py`、`scripts/schemas.py`、`scripts/prompts.py`
 
-#### 压缩触发与执行（Phase 3 已实现，待真实质量验收）
+#### 压缩触发与执行（Phase 3 已验收）
 
 active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
 
@@ -576,7 +576,7 @@ active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
 
 触发条件：每篇笔记 checkpoint 后检查，热层总 token 估算 > `memory.active_memory_token_threshold`（接受粗估，不按 provider 校准）。
 
-执行（一次 LLM 调用 + 一次原子写入）：
+执行（一次批次浓缩，必要时一次浓缩区治理 + 一次原子写入；每次 LLM 调用最多重试一次）：
 1. 原文区只保留最新 300 token，其余作为一个批次交给 LLM 浓缩，结果追加进浓缩区（不预估浓缩比、不多轮）；
 2. 浓缩区若超出 900 token 子预算，整体再浓缩一轮——老内容允许重复浓缩、缓慢漂移，接受为特性（人对自我的认知本就近重远轻）；
 3. 向 `history_archive` 追加 `trigger: "compression"` 条目（归档），与热层替换在**同一次 `safe_write_json()` 原子写入**中完成；LLM 失败则 memory.json 无任何变化，记 error，下次运行重试。
@@ -591,7 +591,7 @@ active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
 |------|--------------|-----------------|-------------------|
 | 第 1-20 篇笔记 | 逐渐增长 | 空 | ~300-1500 |
 | 触发第一次压缩 | 降至阈值 × 0.55 | 1 条归档 | 阈值内 |
-| 第 500 篇笔记 | 稳定在阈值内 | N 条归档 | 恒定，阈值内 |
+| 第 500 篇笔记 | 通常回到阈值附近，允许暂时超标 | N 条归档 | 不随历史笔记数线性增长 |
 
 ---
 
@@ -867,11 +867,11 @@ Hover：显示日期 + 当天字数 + 摘要
 
 ```
 形式：横向时间轴，每周一个节点
-节点显示：该周笔记数量 + 关键词 top 3
+节点显示：截至归档时累计笔记数量 + 最多三条快照观察
 Hover 展示：
   - 时间范围（如 Jun 8 - Jun 14）
-  - 笔记数量
-  - 一句话状态描述
+  - 累计笔记数量（既有归档不提供可靠的当周篇数）
+  - 模板生成的状态描述
   - 主要 tag
 数据来源：history_archive 单数据源（ADR-016，trigger ∈ {weekly, compression}，
           节点按 archived_at 排序，同一周允许两类节点并存）
@@ -939,14 +939,13 @@ Inter（Google Fonts CDN 引入，weight: 300 / 400 / 500），fallback 为 `sys
 run.py 执行
     │
     ├─► [扫描] 找出 raw_notes/ 中未处理的笔记
-    │          （对比 memory.processed_notes）
+    │          （对比 memory.meta.processed_notes）
     │
-    ├─► [预筛选] 跳过无意义笔记 + 短笔记合并分组
+    ├─► [预筛选] 跳过无意义笔记；有效笔记逐篇处理
     │          · 空文件 / 低于 min_meaningful_chars / 无自然语言 → 跳过
-    │          · 短笔记 ≤ batch_char_threshold → 合并为一批（一次 LLM 调用）
-    │          · 长笔记 → 各自独立处理
+    │          · 短笔记合并批处理仍属延后项
     │
-    ├─► [处理] for each 组（按日期升序）
+    ├─► [处理] for each 组（按文件名升序）
     │     │
     │     ├── 加载 active_memory（规模由 config 阈值控制，默认 1500 tokens）
     │     ├── build_system_prompt("process_note", ...)
@@ -962,16 +961,16 @@ run.py 执行
     │     │
     │     ├── 写入 ai_notes/{category}/{title-slug}.md
     │     ├── 原子写入 memory.json（逐篇 checkpoint）
-    │     └── if token > threshold → compress_memory()（Phase 3 规划，未实现）
+    │     └── if token > threshold → compress_memory()（Phase 3 已实现）
     │
     ├─► [分析] analyze.py
     │     ├── memory_hash 仅对 active_memory 计算（归档追加不触发重新生成）；
     │     │     dashboard/data/ 契约文件缺失时无视 hash 跳过、强制重新生成
     │     ├── 从 memory.json 生成 dashboard/data/stats.json
     │     ├── 生成 summaries.json
-    │     ├── 生成 recent_notes.json（最近处理笔记，processed_at 取文件 mtime）
-    │     ├── 生成 roadmap.json（from history_archive，ADR-016）（Phase 3 规划）
-    │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 规划）
+    │     ├── 生成 recent_notes.json（最近处理笔记，processed_at 优先取 frontmatter，旧文件缺失时回退 mtime）
+    │     ├── 生成 roadmap.json（from history_archive，ADR-016）（Phase 3 已实现）
+    │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 已实现）
     │     ├── 生成 avatar_data.json（画像数据契约）（Phase 4 规划）
     │     ├── 生成像素世界场景剧本（Phase 7 规划）
     │     │     └── LLM 基于 avatar_data + assets_manifest + 当前场景状态
@@ -979,12 +978,12 @@ run.py 执行
     │     │             写入 {vault}/.mindraft/scene_state.json
     │     ├── 导出前端配置到 dashboard/data/config.json
     │     ├── 同步 avatar_data.json / scene.json 到 dashboard/data/
-    │     └── 检测跨周 → 向 history_archive 追加 trigger="weekly" 归档条目（ADR-016）
+    │     └── 入口先检测跨周，不受 hash 缓存影响；处理新笔记前也检查，避免覆盖旧周状态
     │
     └─► [展示] serve.py
-          └── 启动 http://localhost:8080
+          └── 启动 http://localhost:8765
               打开浏览器
-              app.js 根据 config.avatar.renderer 加载对应渲染器
+              app.js 读取六个 JSON 数据文件；avatar 渲染器属后续规划
 ```
 
 ---
@@ -997,7 +996,7 @@ run.py 执行
 
 - **AI 职责**：实现代码、每阶段完成后输出实现汇总和待确认问题
 - **人工职责**：审查代码、回答问题、给出反馈、确认后进入下一阶段
-- **决策日志**：实现决策记录入 [Mindraft-Log.md](Mindraft-Log.md)，供 Agent 中断后恢复上下文
+- **决策日志**：实现决策记录入 [mindraft-log.md](mindraft-log.md)，供 Agent 中断后恢复上下文
 
 **阶段推进规则**
 
@@ -1055,7 +1054,7 @@ run.py 执行
 **目标**：原始笔记被 AI 处理分类，写入 ai_notes，记忆状态正确维护
 
 **实现内容**
-- `skill_loader.py` + 基础 skill 文件（`note_style.yml`、`summary_style.yml`、`tagging.yml`）
+- `skill_loader.py` + 基础 skill 文件（`note_style.yml`、`tagging.yml`、`json_output.yml`；`summary_style.yml` 已在 Phase 3 补齐）
 - `process_notes.py`：扫描 raw_notes → LLM 处理 → 写入 ai_notes
 - `memory.json` 基础结构创建
 - `apply_memory_updates()`：处理 LLM 返回的记忆更新指令
@@ -1084,7 +1083,7 @@ run.py 执行
 - `run.py` 命令语义：默认完整流程（处理笔记 → 生成数据 → 启动服务），`--analyze` 只做 AI 分析，`--dashboard` 只启动服务
 
 **不做内容**
-- Chart.js 字数趋势图、CSS Grid 活跃日历（延后到 Phase 3/5）
+- Chart.js 字数趋势图、CSS Grid 活跃日历（继续延后，Phase 5 候选）
 - 用户形象（Phase 4）
 - 记忆压缩、MBTI 描述、Road Map Timeline（Phase 3）
 - 统一归档 ADR-016（周快照并入 history_archive，延后到 Phase 3 实现）
@@ -1101,7 +1100,7 @@ run.py 执行
 
 ### Phase 3 — 记忆系统完善
 
-**状态**：2026-09-07 实现完成，mock 回归通过；真实 LLM 和人工质量验收待完成，详见实现日志。
+**状态**：2026-09-07 实现完成；2026-09-12 用户确认 API 配置与人工测试通过。Phase 1–3 核心闭环已完成，后续功能仍按 Phase 4–7 规划推进。
 
 **目标**：记忆压缩机制正常运转，Dashboard 展示更丰富的自我分析
 
@@ -1115,7 +1114,7 @@ run.py 执行
 - Dashboard 新增：MBTI 风格描述卡片 + Road Map Timeline
 
 **验收标准**
-- 处理笔记数量超过阈值时，自动触发记忆压缩，history_archive 有归档记录
+- active_memory 的估算 token 超过配置阈值时，自动触发记忆压缩，history_archive 有归档记录
 - Dashboard 显示 MBTI 风格描述和 Road Map Timeline
 
 **阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 4
@@ -1235,4 +1234,4 @@ run.py 执行
 ---
 
 *产品名称：Mindraft | 文档版本：v2.0 | 最后更新：2026-06-19*  
-*相关文档：[Mindraft-Log.md](Mindraft-Log.md) · [../AGENTS.md](../AGENTS.md)*
+*相关文档：[mindraft-log.md](mindraft-log.md) · [../AGENTS.md](../AGENTS.md)*

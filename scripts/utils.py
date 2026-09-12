@@ -113,30 +113,16 @@ def token_estimate(text: str, method: str = "char_ratio") -> int:
 
 # ── 语义去重 ──────────────────────────────────────────
 def is_semantically_duplicate(new_value: str, existing_list: list[str]) -> bool:
-    """
-    判断新值是否与已有列表中的某条语义重复。
-    采用简单字符串相似度：如果新值与任一已有值的共同字符占比 > 70%，视为重复。
-    Phase 3+ 可替换为 embedding 向量余弦相似度。
+    """Conservative duplicate check: similarity cannot distinguish contradictions.
+
+    Preserve the original text; only whitespace/case differences count as duplicates.
+    Older callers retain this helper name for compatibility.
     """
     if not isinstance(new_value, str):
         return new_value in existing_list
-
-    new_norm = new_value.strip().lower()
-    for existing in existing_list:
-        if not isinstance(existing, str):
-            continue
-        existing_norm = existing.strip().lower()
-        # 完全包含
-        if new_norm in existing_norm or existing_norm in new_norm:
-            return True
-        # 字符级 Jaccard 相似度
-        set_new = set(new_norm)
-        set_existing = set(existing_norm)
-        intersection = set_new & set_existing
-        union = set_new | set_existing
-        if union and len(intersection) / len(union) > 0.7:
-            return True
-    return False
+    normalized = " ".join(new_value.split()).casefold()
+    return any(isinstance(value, str) and " ".join(value.split()).casefold() == normalized
+               for value in existing_list)
 
 
 # ── 原子写入 ──────────────────────────────────────────
@@ -205,6 +191,15 @@ def reset_analysis_state(config: dict) -> list[str]:
     return removed
 
 
+class _JsonLogFormatter(logging.Formatter):
+    def format(self, record):
+        message = record.getMessage()
+        if record.exc_info:
+            message += "\n" + self.formatException(record.exc_info)
+        return json.dumps({"ts": self.formatTime(record), "level": record.levelname,
+                           "msg": message}, ensure_ascii=False)
+
+
 # ── 日志初始化 ──────────────────────────────────────────
 def setup_logging(config: dict):
     """初始化日志系统，输出到文件 + 控制台"""
@@ -217,8 +212,9 @@ def setup_logging(config: dict):
     logger.setLevel(level)
 
     # 避免重复添加 handler（重复调用 setup_logging 时）
-    if logger.handlers:
-        logger.handlers.clear()
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
 
     # 控制台：简洁格式
     console = logging.StreamHandler()
@@ -227,9 +223,7 @@ def setup_logging(config: dict):
 
     # 文件：JSONL 格式，便于程序解析
     file_handler = logging.FileHandler(str(log_file), encoding="utf-8")
-    file_handler.setFormatter(
-        logging.Formatter('{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
-    )
+    file_handler.setFormatter(_JsonLogFormatter())
     logger.addHandler(file_handler)
 
     return logger

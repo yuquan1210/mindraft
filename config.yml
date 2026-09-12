@@ -67,7 +67,7 @@ token_estimation: char_ratio           # char_ratio | tiktoken
 
 # 用户画像渲染配置（改 renderer 这一行切换渲染器）
 avatar:
-  renderer: text_card       # text_card | pixel_art | animated_sprite | game
+  renderer: text_card       # text_card | pixel_world（Phase 4 / 6 规划）
   work_scene: studio
   home_scene: home
 

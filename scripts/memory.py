@@ -10,8 +10,9 @@ from scripts.skill_loader import build_system_prompt
 from scripts.utils import safe_write_json, get_memory_path, token_estimate
 from scripts.llm_calls import call_with_retry
 
+from scripts.memory_state import DOMAINS
+
 logger = logging.getLogger("mindraft")
-DOMAINS = ("work", "life", "growth", "wellbeing", "identity")
 
 
 def observations(active):
