@@ -1,7 +1,7 @@
 # Mindraft (涌现)
-## 产品方案文档 v2.0
+## 产品方案文档 v2.1
 
-> 最后更新：2026-06-19  
+> 最后更新：2026-09-12
 > 相关文档：[实现日志](mindraft-log.md) · Agent 入口：[../AGENTS.md](../AGENTS.md)
 
 ---
@@ -18,7 +18,7 @@
    - 5.3 [笔记处理流水线](#53-笔记处理流水线)
    - 5.4 [增量蒸馏记忆系统](#54-增量蒸馏记忆系统)
    - 5.5 [笔记关联关系](#55-笔记关联关系)
-   - 5.6 [用户画像系统](#56-用户画像系统)
+   - 5.6 [像素世界用户形象](#pixel-world-design)
 6. [Dashboard 设计](#6-dashboard-设计)
 7. [UI 风格定义](#7-ui-风格定义)
 8. [数据流总览](#8-数据流总览)
@@ -109,8 +109,8 @@ Mindraft 作为旁观者，以局外人的眼光重新审视这些文字，
 │         ↓                                                │
 │   ① 写入 ai_notes（分类 + 链接 + 追问标记）               │
 │   ② 更新 memory.json（蒸馏记忆）                         │
-│   ③ 更新 relationships.json（关联图谱）                   │
-│   ④ 更新 avatar_data.json（画像数据契约）                 │
+│   ③ 笔记关联（Phase 5，MVP 后）                   │
+│   ④ 更新 scene_state.json（Phase 4）                 │
 │         ↓                                                │
 │   analyze.py       →  生成 dashboard/data/*.json         │
 └──────────────────────────┬──────────────────────────────┘
@@ -120,11 +120,11 @@ Mindraft 作为旁观者，以局外人的眼光重新审视这些文字，
 │              展示层：本地 Web Dashboard                   │
 │              http://localhost:8765                       │
 │                                                          │
-│   字数趋势图 │ 活跃日历 │ 每日一句                        │
-│   MBTI 风格描述 │ Road Map │ Work Me │ Home Me           │
+│   最近笔记 │ 五域摘要 │ 每日一句                        │
+│   性格侧写 │ Road Map │ 单一像素世界（Phase 4）           │
 │                                                          │
 │   画像渲染层（可替换）：                                   │
-│   TextCardRenderer → PixelArtRenderer → GameRenderer     │
+│   PixelWorldRenderer（场景 JSON 与引擎解耦）     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -170,9 +170,8 @@ notes-vault/
 │
 └── .mindraft/                    # AI 分析产物（隐藏目录，非笔记；ADR-014）
     ├── memory.json               # 蒸馏记忆（核心状态文件，含 history_archive 统一归档）
-    ├── relationships.json        # 笔记关联图谱
-    ├── tags.json                 # 全局 tag 汇总
-    └── avatar_data.json          # 用户画像数据契约
+    ├── relationships.json        # Phase 5 规划，MVP 后
+    └── scene_state.json          # Phase 4B/C 规划，像素世界权威状态
 ```
 
 > 运行日志与进程锁不在笔记仓库：`mindraft/logs/process_log.jsonl`、`mindraft/.mindraft.lock`。
@@ -212,11 +211,10 @@ mindraft/
 │   ├── style.css
 │   ├── app.js
 │   ├── renderers/                # 画像渲染插件（可替换）
-│   │   ├── base_renderer.js
-│   │   ├── text_card_renderer.js     # Phase 4
-│   │   └── pixel_world_renderer.js   # Phase 6-7（Kaplay.js 像素小人世界）
-│   ├── vendor/                   # 前端依赖本地副本（Kaplay.js，Phase 6）
-│   ├── assets/                   # 像素素材图集（不入库，Phase 6）
+│   │   ├── base_renderer.js          # Phase 4A，最小生命周期接口
+│   │   └── pixel_world_renderer.js   # Phase 4A（Kaplay.js 像素小人世界）
+│   ├── vendor/                   # 前端依赖本地副本（Kaplay.js，Phase 4A）
+│   ├── assets/                   # 像素素材图集（最小示例入库，外部素材按许可，Phase 4A）
 │   │   └── assets_manifest.json  # 素材清单（AI 导演的可用资源目录）
 │   └── data/                     # analyze.py 输出，JS 直接读取
 │       ├── config.json            # 前端配置（含 memory_hash）
@@ -224,8 +222,8 @@ mindraft/
 │       ├── summaries.json         # 每日摘要
 │       ├── recent_notes.json      # 最近处理笔记列表
 │       ├── roadmap.json           # 归档历史时间轴（已实现，ADR-016 单数据源）
-│       ├── avatar_data.json       # 画像数据（Phase 4 规划）
-│       └── scene.json             # 像素世界场景剧本（Phase 7 规划）
+│       ├── profile.json           # 已实现的性格侧写
+│       └── scene.json             # 像素世界场景剧本（Phase 4B/C 规划）
 │
 ├── config.yml                    # 配置文件
 ├── run.py                        # 一键入口
@@ -246,8 +244,8 @@ mindraft/
 | 前端 | 原生 HTML + CSS + JS | 零框架，直接上手 |
 | 图表库 | Chart.js（CDN 引入） | 无需安装，一行引入 |
 | 本地服务 | Python `http.server` | 内置模块，无需安装 |
-| 像素世界渲染（Phase 6-7） | Kaplay.js（vendor 本地引入） | 轻量 2D 游戏引擎，原生支持 Aseprite 图集 |
-| 像素素材（Phase 6-7） | 自选像素素材包 + Aseprite 切图编目 | 素材不提交入库，通过 `assets_manifest.json` 编目 |
+| 像素世界渲染（Phase 4） | Kaplay.js（vendor 本地引入） | 轻量 2D 游戏引擎，原生支持 Aseprite 图集 |
+| 像素素材（Phase 4） | 随包最小素材 + 可选外部素材 | manifest 编目；默认可离线复现，Aseprite 可选 |
 | IDE | VS Code + Claude Code | 适合 vibe coding |
 
 ### config.yml 关键配置项
@@ -256,7 +254,7 @@ mindraft/
 |--------|------|--------|
 | `notes_vault_path` | 笔记仓库本地路径 | `~/Developer/GitHub/notes-vault` |
 | `llm_provider` | 切换 LLM 的唯一入口 | `kimi \| openai \| anthropic \| deepseek` |
-| `avatar.renderer` | 切换画像渲染器 | `text_card \| pixel_world` |
+| `pixel_world.enabled` / `pixel_world.renderer` | Phase 4A 待实现；控制世界展示与渲染器 | `true` / `pixel_world` |
 | `memory.active_memory_token_threshold` | 触发记忆压缩的 token 阈值 | `1500` |
 | `memory.original_zone_tokens` | 原文区保留的最新观察 token 数（不参与浓缩） | `300` |
 | `memory.condensed_zone_token_budget` | 浓缩区子预算，超出则整体再浓缩 | `900` |
@@ -315,7 +313,7 @@ System Prompt = 角色定义 + 记忆摘要 + 挂载的 Skill 规则集
 | `dashboard_summary` | `summary_style` + `analysis_style` | 每日洞察、五域摘要、性格侧写（同一次调用） |
 | `compress_memory` | `memory_compression` | 五域浓缩字符串 |
 
-> 链接增强、avatar 生成是后续规划操作，尚未接入。`profile.json` 当前由 `dashboard_summary` 拆出，不额外调用 `generate_profile` 或 `generate_mbti_description`。
+> 链接增强和像素场景导演是后续规划操作，尚未接入。`profile.json` 当前由 `dashboard_summary` 拆出，不额外调用 `generate_profile` 或 `generate_mbti_description`。
 
 → 实现代码：`scripts/skill_loader.py`
 
@@ -638,175 +636,81 @@ active_memory 分两个区（2026-08-18 grilling 第二轮决策）：
 
 ---
 
-### 5.6 用户形象进化系统
+<a id="pixel-world-design"></a>
 
-#### 设计思路：数据与渲染分离，形象持续进化
+### 5.6 像素世界用户形象（Phase 4 MVP，尚未实现）
 
-画像系统分为两层，两层之间通过稳定的数据契约解耦。
+> 2026-09-12 ADR-019：像素世界直接替代原 Text Card 形象方案。Work Me / Home Me 移至未来目标，不生成双画像、不做双场景切换。既有 `profile.json` 性格侧写保留，它不是被取消的 Text Card 渲染器。
 
-**核心进化原则：形象不是每次重新生成，而是在已有形象的基础上持续演化。** 就像真实的人一样——每天都会有细微变化，但不会每天都变成另一个人。稳定的核心不变，细节随生活随时间流动。
+#### 最小闭环与依赖
 
-```
-LLM 分析结果
-    │
-    ▼
-Avatar Data（稳定的数据契约）    ← 这层永远不变
-    │
-    ▼
-Avatar Renderer（可替换的插件）  ← 只改这层
-    │
-    ├── TextCardRenderer         # Phase 4
-    └── PixelWorldRenderer       # Phase 6-7（AI 导演的像素小人世界）
+```text
+已有 active_memory（五域原文 + _condensed）
+    + 精简素材 manifest + 当前 scene_state 的可见状态
+    → Python 场景导演（BaseLLM + skill + schema + 语义校验）
+    → scene_state.json（单一权威状态，含演化记录）
+    → dashboard/data/scene.json（可重新导出的渲染投影）
+    → PixelWorldRenderer（本地 Kaplay，单角色、单房间）
 ```
 
-**切换表现形式的成本：**
+不需要 `avatar_data.json` 中间层，不额外生成一套人格画像，也不依赖尚不存在的 `assess_change_magnitude()` / `evolve_avatar()`。场景表达综合五域观察，不把 work/life 分类映射为两个人格。后端与渲染通过版本化 Scene JSON 解耦；MVP 只实现一个渲染器，不为了可替换性先做第二个渲染器。
 
-| 替换内容 | 难度 | 需要改动的地方 |
-|---------|------|--------------|
-| 换像素素材包 | 低 | 替换 `dashboard/assets/` 图集 + 更新 `assets_manifest.json` |
-| 换游戏引擎（Kaplay → 其他） | 中 | 重写 `pixel_world_renderer.js`，scene JSON 契约不变 |
-| 换整体形式（像素世界 → 其他） | 中 | 新建渲染器，config 改一行 |
+#### MVP 范围与预算
 
----
-
-#### 形象进化机制
-
-**两种生成模式：**
-
-| 模式 | 触发条件 | 行为 |
-|------|---------|------|
-| Genesis Mode（创世） | 首次运行 / 用户主动重置 / 检测到重大生活转变 | 从零生成全新形象 |
-| Evolution Mode（进化） | 常规每次 run.py 执行 | 在现有形象基础上做增量调整 |
-
-**变化的三个层级：**
-
-```
-Micro（每次运行都可能更新）
-  · mood / energy_level / stress_level
-  · thought_bubble（角色当前在想什么）
-  · recent_highlights（近期发生的亮点）
-  · 像素世界：更新角色动作剧本、表情与头顶气泡，场景不变
-
-Macro（数周内缓慢积累）
-  · room_objects 追加新物件（新爱好 → 书桌多了本新书）
-  · traits 权重调整（某个特质越来越突出则加粗描述）
-  · description 的侧重点/语气随状态演变
-  · scene 细节调整（时间段、光线、氛围）
-  · 像素世界：场景增量变更——追加/移动物件、调整角色外观部件，房间布局保持
-
-Transformation（稀有，标志性人生转变）
-  · visual_anchors 更新（风格/外貌大幅变化）
-  · color_palette 整体切换（气质转变）
-  · style_era 更新（进入新的人生阶段）
-  · 像素世界：允许换地板/墙壁风格、角色外观大幅调整，但场景状态中的历史物件不删除
-```
-
-**变化量级评估规则：**
-
-| 量级 | 触发条件 |
+| 项目 | MVP 约束 |
 |------|----------|
-| `transformation` | memory_delta 包含：换城市、换工作、重大关系变化、user_reset |
-| `macro` | memory_delta 涉及：`ongoing_projects`、`current_routines`、`interests_observed` |
-| `micro` | 其他任何情况（默认） |
+| 世界 | 一个固定布局的 16×12 网格房间，一个固定角色；固定地板/墙壁 |
+| 物件 | 最多 8 个预定义槽位，槽位与交互站点由代码定义；LLM 只能选 manifest 内的道具 |
+| 基础动作 | `walk_to`（合法站点）、`wait`、`emote`、`interact`；不执行生成的代码 |
+| 剧本 | 最多 12 步；wait/interact 为 0.5–10 秒，行走有超时；正常一轮目标 ≤60 秒，结束可安全回到起点再循环 |
+| 文本 | 一句状态说明和一句气泡，各 ≤60 字；无新证据时允许保持原样 |
+| 外观 | 固定 skin；不推测用户真实相貌，不做部件拼装与人生阶段换装 |
+| 交互 | 仅观看，可暂停/恢复；无用户操控、任务系统、NPC、音乐或物理模拟 |
+| 素材 | 仓库自带可分发的最小示例素材和来源/许可记录；用户素材包可选，不作为跑通 MVP 的前置条件 |
 
----
+以上数值是可验收的初始实现上限；验收前调整需同步 schema、测试和文档。素材美术精度可迭代，不阻塞功能闭环。
 
-#### Avatar Data 契约
+#### 数据契约与执行职责
 
-这是整个画像系统唯一稳定的接口。无论渲染方式怎么变，此数据结构不变。字段只增不减，新渲染器需要更多数据时追加字段，不改动现有字段。
+| 产物 | 内容与职责 |
+|------|------------|
+| `dashboard/assets/assets_manifest.json` | 版本、资源 id、相对路径、尺寸、动画名、物件槽位类型、可用交互动作；AI 只接收筛选过的目录，不接收图片或全部资源路径 |
+| 固定基础场景 fixture | 网格、阻挡格、角色 skin、起点、槽位与合法站点；纳入版本控制，4A 用它在无 AI 时展示明确标注的示例 |
+| `{vault}/.mindraft/scene_state.json` | `schema_version`、`revision`、`input_hash`、manifest 版本、稳定角色 id、当前房间/物件、剧本、状态文本、生成时间、追加式 `evolution_log` |
+| `dashboard/data/scene.json` | 仅渲染需要的当前状态与版本/说明，不含历史记忆、原笔记、API key、完整演化日志 |
+| `scripts/scene.py`（规划） | 输入摘要、触发判断、调用导演、校验、在副本上应用变更、原子保存、场景投影导出 |
+| `pixel_world_renderer.js`（规划） | `mount(container, scene, manifest)` / `update(scene)` / `destroy()`；只解释数据，不修改后端状态 |
 
-```json
-// .mindraft/avatar_data.json
+后端分配稳定物件 id（基于槽位），LLM 不得重定义角色 id、房间尺寸、地形、资源路径或版本。4B 的导演输出为受限的 `activity`、`emote`、`bubble`、`description` 及最多 12 步剧本；4C 再增加 `add_prop(slot_id, asset_id)`，最多每次新增一个物件。不允许通用 JSON Patch、DELETE、任意坐标或任意动作。保留旧物件，满槽后仍可更新行为，不继续累积可见物件。
 
-{
-  "generated_at": "2026-06-15",
-  "genesis": false,          // true = 本次为全新创世；false = 进化模式
+JSON Schema 校验类型、枚举、长度、数量；语义校验必须验证资源存在、动画/交互受素材支持、槽位兼容且未占用、站点可达、整个剧本及循环回程可执行。16×12 固定网格用确定性 BFS 寻路；路径由代码计算，不由 LLM 猜。运行时超时或资源加载失败进入 idle/静态状态，不阻塞其他卡片。
 
-  // 稳定的形象身份锚点，跨所有场景共用，只在 Transformation 时更新
-  "avatar_identity": {
-    "version": 4,
-    "established_at": "2026-06-01",
-    "last_evolved_at": "2026-06-15",
-    "core_traits": ["注重细节", "内向", "逻辑导向"],    // 稳定人格特质
-    "visual_anchors": ["眼镜", "深色系穿搭", "短发"],   // 外貌稳定元素
-    "style_era": {
-      "name": "early_builder",
-      "started_at": "2026-06-01",
-      "description": "初期摸索阶段，专注于构建基础，对细节有执着"
-    }
-  },
+#### 更新、缓存和故障恢复
 
-  // 记录每次进化的变化历史（只增不删）
-  "evolution_log": [
-    {
-      "timestamp": "2026-06-15",
-      "change_magnitude": "micro",
-      "trigger_notes": ["2026-06-15.md"],
-      "changes_summary": {
-        "work_me.core.mood": "focused → tired",
-        "work_me.thought_bubble": "这个边界条件到底该怎么处理..."
-      }
-    }
-  ],
+- 首次无状态：代码建立基础房间和固定角色；有非空观察（而非仅有空的五域字典）才调用导演进行初始行为设置（Genesis）。记忆为空时显示明确标注的示例/等待状态，不编造用户画像。
+- 后续有变化：比较独立的场景 `input_hash`（active_memory + manifest 版本 + 场景 schema/导演规则版本），在已有场景上应用允许的更新。压缩可能改变表达并触发一次更新，但不意味着必须增加道具。
+- 输入不变：零场景 LLM 调用。变化时最多一次逻辑导演调用（校验或调用失败只重试一次），与现有摘要调用独立；不读取原笔记全集或演化历史作为输入。
+- 成功：一次 `safe_write_json()` 同时写入新状态、成功输入 hash 和演化记录，再导出 scene.json。先验证完整候选，再写磁盘；全量重建不由 LLM 或“重大生活转变”自动触发。
+- 失败：保留旧状态、旧 hash 和旧导出，下次分析重试；首次生成失败使用基础示例。坏状态文件不视为“首次运行”，明确报错并保留现场。
+- 导出中断：磁盘 state 是权威来源，scene.json 缺失/版本不符时无需 LLM 即可重导出。素材版本不兼容时不自动重置，先提示更换回兼容素材/执行明确迁移。
+- 历史：`evolution_log` 追加实际成功的变更和输入 hash；不将旧记录发送给 LLM。MVP 不做回放功能，也不把场景历史混入记忆 `history_archive`。
 
-  "work_me": {
-    "core": {
-      "mood": "focused",
-      "energy_level": 0.7,
-      "stress_level": 0.4,
-      "primary_activity": "deep work"
-    },
-    "traits": ["注重细节", "容易过度思考", "逻辑导向"],
-    "scene": "studio",
-    "description": "工作中的你像一个在迷雾中摸索路径的建筑师...",
-    "recent_highlights": [
-      "正在攻克一个复杂的权限设计问题",
-      "本周 code review 效率有所提升"
-    ],
-    "thought_bubble": "这个边界条件到底该怎么处理...",
-    "room_objects": ["机械键盘", "多个显示器", "咖啡杯", "白板"],
-    "color_palette": ["#1a1a2e", "#16213e", "#a78bfa"]
-  },
+`--analyze` 和默认流程在同一进程锁内更新场景；`--dry-run` 使用当前模拟记忆调用导演但不写 scene_state/scene；`--dashboard` 仅展示已有场景或随包示例。像素世界开启后，缺 scene.json 只触发场景修复，不让已有 summaries/profile 被迫重新调用 LLM。`--rebuild` 在 Phase 4 接入时明确扩展为一并清理 scene_state，重新创建世界；普通失败绝不建议用 rebuild 兜底。
 
-  "home_me": {
-    "core": {
-      "mood": "relaxed",
-      "energy_level": 0.45,
-      "stress_level": 0.2,
-      "primary_activity": "cooking"
-    },
-    "traits": ["享受独处", "有创造力", "喜欢动手"],
-    "scene": "home",
-    "description": "下班后的你像一个终于可以放松的手艺人...",
-    "recent_highlights": [
-      "上周末尝试了新菜谱",
-      "恢复了早起健身的习惯"
-    ],
-    "thought_bubble": "今晚做什么吃...",
-    "room_objects": ["锅铲", "绿植", "书", "瑜伽垫"],
-    "color_palette": ["#2d1b00", "#4a3728", "#f59e0b"]
-  }
-}
-```
+#### 技术可行性与落地门槛
 
-**各字段的渲染器使用情况：**
+现有 Python 状态写入、filelock、BaseLLM、skill loader、校验重试和本地 HTTP 服务可以复用。尚无场景代码、渲染器或素材，因此 4A 必须先完成离线可运行的竖向原型，再接 AI。
 
-| 字段 | TextCard | PixelWorld |
-|------|---------|------------|
-| `core.mood` / `energy_level` | 选择占位表情 | 驱动角色动画状态 |
-| `description` | ✅ 显示文字 | 作为角色对话/独白文本 |
-| `traits` | ✅ tag 标签 | 影响角色行为逻辑 |
-| `thought_bubble` | ❌ 忽略 | ✅ 角色头顶气泡 |
-| `room_objects` | ❌ 忽略 | ✅ 生成场景物品 |
-| `color_palette` | ❌ 忽略 | ✅ 场景主色调 |
+KAPLAY 官方文档提供 sprite/图集与 Aseprite 导出加载接口，可用于这一规模的场景；Aseprite 不是必须采购的工具，普通 PNG sprite sheet 即可开始。引擎能力依据：[官方 API 文档](https://kaplayjs.com/docs/api/reference/)。实施时固定经验证的稳定版本，vendor 构建产物并保留许可证，不依赖 CDN 或开发预览版。
 
----
-
-#### Renderer 插件设计
-
-所有渲染器继承 `BaseAvatarRenderer`，实现 `render()` 方法。切换渲染器只需改 `config.yml` 一行，无需修改业务代码。
-
-→ 所有渲染器实现：`dashboard/`
+| 风险 | 收敛办法 / 验收门槛 |
+|------|--------------------|
+| 素材尺寸/动作不统一 | 4A 先用一套小素材验证 idle、walk、一个交互；manifest 缺动作时禁用相应能力 |
+| LLM 生成不可执行的场景 | 固定房间/槽位，资源与动作白名单，完整候选语义校验，失败回退 |
+| 仅装饰、与笔记无关联 | 用工作专注、运动恢复、学习阅读三类 fixture 及真实记忆人工抽查行为/气泡是否有依据；不验收“准确人格诊断” |
+| 每次运行重建/重复新增 | 稳定 id + 持久状态 + hash + add_prop 幂等与满槽用例 |
+| 浏览器循环泄漏或卡死 | 页面隐藏时暂停，destroy 释放引擎/事件/计时器；连续播放 10 分钟及重复更新 20 次无重复实例、未捕获异常或动作死锁 |
+| AI 调用失败影响笔记主链路 | 场景为独立可失败阶段；失败后已处理笔记、记忆和现有 Dashboard 仍可用 |
 
 ---
 
@@ -818,13 +722,12 @@ Transformation（稀有，标志性人生转变）
 
 | 组件 | 描述 | 数据来源 |
 |------|------|---------|
-| 字数趋势图 | 最近 7 天每天笔记总字数柱状图 | `stats.json` |
-| 活跃日历 | 类 GitHub 热力图，最近 12 周 | `stats.json` |
+| 字数趋势图（未来） | 最近 7 天每天笔记总字数柱状图 | `stats.json` |
+| 活跃日历（未来） | 类 GitHub 热力图，最近 12 周 | `stats.json` |
 | 每日一句 | 当天（或最近一篇）笔记摘要 | `summaries.json` |
 | MBTI 风格描述 | 基于 active_memory 的长期性格侧写 | `profile.json` |
 | Road Map Timeline | 以周为节点的状态变化轨迹 | `roadmap.json` |
-| Work Me | 工作场景用户画像 | `avatar_data.json` |
-| Home Me | 生活场景用户画像 | `avatar_data.json` |
+| 像素世界（Phase 4 MVP） | 单角色、单房间的记忆驱动形象 | `scene.json` |
 
 ### 组件详细设计
 
@@ -882,16 +785,11 @@ Hover 展示：
               确保 Road Map 在早期不会空白
 ```
 
-#### 用户画像：Work Me / Home Me
+#### 像素世界窗口（Phase 4 MVP）
 
-```
-布局：左图右文
-左侧：由当前 renderer 渲染的画像区域
-右侧：description 文字 + traits 标签 + recent_highlights 列表
+Dashboard 只增加一个世界窗口，展示一个角色、固定房间、气泡及一句状态说明；支持暂停/恢复。初始示例、生成失败和加载失败均有明确提示，其余卡片继续可用。既有性格侧写不删除，也不作为新世界渲染的依赖。
 
-text_card（Phase 4）：   左侧为根据 mood 状态切换的预设占位像素图
-pixel_world（Phase 6-7）：整个区域替换为 AI 导演的像素小人世界窗口
-```
+Work Me / Home Me 的划分、左右双卡和双场景切换均不属于 MVP。未来需要时再扩展同一用户的场景视角。
 
 ---
 
@@ -971,19 +869,18 @@ run.py 执行
     │     ├── 生成 recent_notes.json（最近处理笔记，processed_at 优先取 frontmatter，旧文件缺失时回退 mtime）
     │     ├── 生成 roadmap.json（from history_archive，ADR-016）（Phase 3 已实现）
     │     ├── 生成 profile.json（MBTI 风格描述）（Phase 3 已实现）
-    │     ├── 生成 avatar_data.json（画像数据契约）（Phase 4 规划）
-    │     ├── 生成像素世界场景剧本（Phase 7 规划）
-    │     │     └── LLM 基于 avatar_data + assets_manifest + 当前场景状态
-    │     │             Genesis 全量生成 / Evolution 增量变更
+    │     ├── 生成像素世界场景剧本（Phase 4B/C 规划）
+    │     │     └── LLM 基于 active_memory + 精简 manifest + 当前场景状态
+    │     │             Genesis 基础房间 + AI 行为 / Evolution 受限变更
     │     │             写入 {vault}/.mindraft/scene_state.json
     │     ├── 导出前端配置到 dashboard/data/config.json
-    │     ├── 同步 avatar_data.json / scene.json 到 dashboard/data/
+    │     ├── 像素世界启用时独立导出 scene.json（Phase 4）
     │     └── 入口先检测跨周，不受 hash 缓存影响；处理新笔记前也检查，避免覆盖旧周状态
     │
     └─► [展示] serve.py
           └── 启动 http://localhost:8765
               打开浏览器
-              app.js 读取六个 JSON 数据文件；avatar 渲染器属后续规划
+              app.js 读取六个 JSON 数据文件；像素世界属 Phase 4 规划
 ```
 
 ---
@@ -1100,7 +997,7 @@ run.py 执行
 
 ### Phase 3 — 记忆系统完善
 
-**状态**：2026-09-07 实现完成；2026-09-12 用户确认 API 配置与人工测试通过。Phase 1–3 核心闭环已完成，后续功能仍按 Phase 4–7 规划推进。
+**状态**：2026-09-07 实现完成；2026-09-12 用户确认 API 配置与人工测试通过。Phase 1–3 核心闭环已完成，后续按 Phase 4A–4C 像素世界 MVP 与 Phase 5（MVP 后）规划推进。
 
 **目标**：记忆压缩机制正常运转，Dashboard 展示更丰富的自我分析
 
@@ -1121,101 +1018,83 @@ run.py 执行
 
 ---
 
-### Phase 4 — 用户形象（Text Card）
+<a id="pixel-world-mvp"></a>
 
-**目标**：Dashboard 出现随笔记进化的用户形象卡片
+### Phase 4 — 像素世界用户形象 MVP
 
-**实现内容**
-- `analyze.py` 扩展：生成 `avatar_data.json`（Genesis Mode，首次创建）
-- `assess_change_magnitude()` + `evolve_avatar()`（Evolution Mode，后续增量更新）
-- `base_renderer.js` + `text_card_renderer.js`
-- Dashboard：Work Me / Home Me 画像卡片区域
+**状态**：未开始。替代原 Phase 4 Text Card，并吸收原 Phase 6–7；原编号仅保留在历史日志中（ADR-019）。Phase 1–3 保持已完成。
 
-**验收标准**
-- 首次 run.py 执行后，avatar_data.json 生成（genesis=true）
-- 后续执行在现有形象上做增量更新（genesis=false）
-- Dashboard 显示 Work Me / Home Me 文字卡片，内容与笔记内容相符
+**MVP 交付定义**：已有笔记处理和 Dashboard，加上一个依据记忆改变行为、随时间有限演化的像素小人世界。没有 Work Me / Home Me 双画像，也不以笔记关联、URL 抓取或用户互动为前置条件。
 
-**阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 5
+按 4A → 4B → 4C 顺序实施，每步都应可独立运行并验收；前一步未通过，不叠加下一步。正式 MVP 完成需三步全部通过，4A 示例渲染不等于 AI 形象已完成。
 
----
+#### 4A — 离线像素世界竖向原型（零 LLM）
 
-### Phase 5 — 笔记关联与链接增强
+**工作**：
+- 固定一个房间、一个角色、最多 8 槽位（初始仅占用 1–2 个，保留演化空间）；纳入最小可分发素材、manifest、引擎固定版本与许可记录。Aseprite 和付费素材不作为必需依赖。
+- 定义版本化 Scene/manifest 契约，建立共享合法/非法 fixtures；先实现一个可播放剧本：站点间行走 → 等待/交互 → 表情/气泡 → 回程循环。
+- 实现 renderer 生命周期、确定性寻路、idle fallback、暂停/恢复、页面隐藏暂停与像素缩放；Dashboard 新增一个世界窗口，保留所有已有卡片。
+- 接入规划中的 `pixel_world.enabled` 与 renderer 配置；仅此阶段起配置生效。为 `--dashboard` 增加只读 `/runtime-config.json` 响应，只返回标题、世界开关、渲染器和本地 fixture 路径等白名单字段，不写业务文件、不暴露 provider/key/vault 路径。前端在六份分析数据缺失时仍可独立加载示例；关闭时不加载场景，老 Dashboard 正常工作。
 
-**目标**：笔记之间建立语义关联，URL 内容自动补充摘要
+**验收**：
+- 全新 checkout 安装 Python 依赖后，无额外素材下载、无 key、断网时可用 `--dashboard` 看到明确标注的示例世界；不是直接双击 HTML。
+- 至少一个完整循环可执行；不可达站点、缺图片、缺动画、剧本异常、只读运行配置请求失败都能降级，不出现空白页面或无限等待。
+- 在主流桌面浏览器检查 800px/1200px 窗口、暂停/恢复和重复挂载；连续 10 分钟与 20 次更新检查通过。
+- 后端已有回归通过；前端增加可重复运行的 fixture/浏览器 smoke 命令，写入 README。
 
-**实现内容**
-- `relationships.json` 更新逻辑（在 process_notes.py 中实现）
-- 链接抓取与摘要补充（URL → 页面内容 → LLM 摘要 → 追加到笔记）
-- Dashboard：关系网络图可视化
-- 追问标记交互处理（用户回答追问 → 补充到对应笔记）
-  - 已确认延后（2026-08-16）：追问闭环不作为 MVP 目标；`questions` 字段保留在 LLM 输出契约中，实现闭环时一并消费（渲染进笔记 + 供 dashboard 展示待回答列表），当前追问由 note_style 的 `<!-- ❓ -->` 内嵌注释承载
+#### 4B — 记忆驱动的场景行为（打通真实闭环）
 
-**验收标准**
-- 包含 URL 的笔记，ai_notes 中有 `> 📎 AI补充` 摘要追加
-- relationships.json 记录笔记间关联
-- Dashboard 有关系网络图
+**依赖**：4A 契约和渲染 smoke 通过；使用现有 active_memory，不增加 avatar_data 中间层。
 
-**阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 6
+**工作**：
+- 新增 `scripts/scene.py`、`SCENE_DIRECTOR_ROLE`、`scene_director.yml` 和受限导演 schema，复用 `get_llm()`、统一重试/校验接口。
+- 接入单独的场景缓存、scene_state 原子保存与 scene 导出；导演只更新行为、表情、说明、气泡和合法剧本，不能改变布局、外观或物件。
+- 在现有分析之后独立执行场景生成，复用 dry-run 模拟记忆；拆分摘要缓存与场景刷新条件。
+- 接入 scene_state 的 rebuild 清理和缺失导出修复；记录文件格式与错误处理。
 
----
+**验收**：
+- 三类 mock 记忆得到合法且可播放的行为；真实 key 下 dry-run 与测试 vault 的完整分析各完成一次人工检查。
+- 同输入第二次分析不调用场景 LLM；修改记忆只增加一次逻辑调用；坏 schema、未知 id、不支持的动作、不通路径均重试一次，最终失败保留旧场景和有效笔记结果。
+- 首次无记忆不调用导演且不编造用户状态；仅删除导出可从 state 修复；坏 state 不被悄悄重置。
+- dry-run 无业务文件写入，`--dashboard` 不调用 AI，关闭像素世界不影响六份既有数据契约。
 
-### Phase 6 — 像素世界渲染基建（无 AI）
+#### 4C — 有限增量进化与 MVP 验收
 
-**目标**：Dashboard 中出现一个由固定剧本驱动的像素小人世界窗口（Kaplay.js），渲染管线完全跑通，但场景内容暂不接入 LLM
+**依赖**：4B 的缓存、失败恢复和数据持久化通过。
 
-**背景**：本阶段与 Phase 7 共同替代原「像素画形象（Replicate API）」方案。改为「AI 导演的像素小人世界」：AI 根据笔记产出场景剧本 JSON，前端 Kaplay.js 忠实渲染，不与用户交互。架构与决策依据见 `doc/mindraft-log.md` ADR-015。
+**工作**：
+- 在同一次导演响应中增加受限 `add_prop(slot_id, asset_id)`，每次最多一件；后端检查现有库存与槽位并赋稳定 id。
+- 角色与房间不重建、旧物件不删除；无适合素材/满槽时只改变行为，不为视觉变化强行添物件。
+- 同一次状态提交追加演化记录；增加失败重试、幂等重复、写入中断/重导出、20 次连续更新和满槽测试。
+- 用测试 vault 验收“写一篇新笔记 → run.py → 看见有依据的行为或物件变化”；明确不承诺每篇笔记都产生视觉变化。
 
-**实现内容**
-- 素材准备：选定像素素材包（版权自洽，不提交入库，`.gitignore` 排除），用 Aseprite 切图/导出图集
-- `assets_manifest.json`：编目所有可用素材（角色部件 / 家具 / 地板 / 墙壁），含 id、名称、tags、grid_size，以及角色可用动作列表（`walkTo` / `wait` / `interact` / `emote`）——这是后续 AI 导演理解可用资源的唯一途径
-- Scene JSON 契约：定义场景描述格式（地板/墙壁 + 物件列表 id+格子坐标 + 角色 skin 与初始位置 + 动作剧本），先以硬编码示例场景驱动开发
-- Kaplay.js vendor 到 `dashboard/vendor/`（不走 CDN，保证离线可用）；素材放 `dashboard/assets/`
-- `pixel_world_renderer.js`：解析 Scene JSON → 渲染地板/墙壁/物件/角色；剧本执行器按序执行动作，含简单寻路；剧本结束后进入环境行为循环（idle 动画 + 剧本循环）
-- Dashboard 集成：`config.yml → avatar.renderer: pixel_world` 时画像区域加载像素世界窗口，`text_card` 可回退
+**验收**：
+- 至少一次有依据的物件新增与一次纯行为更新，前后场景中角色 id、房间和原有物件 id 保持稳定。
+- 重复输入/重试不重复新增，满槽不丢物件；非法更新和磁盘写入失败不改变成功场景及演化记录。
+- 全量离线回归、场景浏览器 smoke、真实 API 流程通过，README 包含配置、素材来源、运行/测试和故障恢复说明。
 
-**验收标准**
-- 硬编码示例 Scene JSON 在 Dashboard 中渲染出完整场景，小人按剧本行动并循环播放
-- `avatar.renderer` 在 `text_card` / `pixel_world` 间切换只需改 config 一行
-- `python run.py --dashboard` 在无 API key、纯静态环境下正常展示像素世界
+**阶段结束**：用户验收 4C 后，像素世界 MVP 完成；是否进入后续增强再决定，不自动扩展范围。
 
-**阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认 → 进入 Phase 7
+### Phase 5 — 笔记关联与链接增强（MVP 后，独立排期）
 
----
+保留原功能方向，但不再阻塞像素世界：`relationships.json`、URL 抓取与摘要、关系图。实际开始前重新拆分实施计划；追问闭环仍属于未来目标。不得为了本阶段反向修改 `raw_notes/`。
 
-### Phase 7 — AI 导演与场景进化
+### 未来目标（不计入当前 MVP）
 
-**目标**：场景由 LLM 根据笔记内容生成，并随记忆增量进化（场景状态持久化，不整体重建）
+- **Work Me / Home Me**：按场景呈现同一个用户的不同侧面；届时再决定多房间、场景切换或其他形式，不现在预建双画像字段。
+- 多角色、NPC、用户可操控互动、任务系统、声音；动态房间布局、角色换装、重大生活转变的 transformation。
+- 高质量素材包、更多动作、场景演化回放；更换渲染引擎或表现形式。
+- 短笔记批处理、字数趋势图、活跃日历、追问回答闭环。
+- 自动触发、云端部署、多用户、移动端、更多笔记源、开放 API。
 
-**实现内容**
-- Python 侧场景生成（LLM 调用全部在后端，前端只读 `dashboard/data/scene.json`，符合 ADR-005 / ADR-012）：
-  - `prompts.py` 新增 `SCENE_DIRECTOR_ROLE`；`skills/scene_director.yml`（场景设计规则）
-  - `schemas.py` 新增 Scene 输出 JSON Schema；`analyze.py` 扩展生成场景
-- Genesis / Evolution 两模式（复用 Phase 4 的 `assess_change_magnitude()`，遵循 ADR-004）：
-  - Genesis：首次运行，LLM 基于 `avatar_data.json` + manifest 全量生成场景
-  - Evolution：LLM 只输出对当前场景的增量变更指令——micro 只更新动作剧本/气泡，macro 追加/移动物件与角色外观部件，transformation 才允许换地板墙壁风格
-- 场景状态持久化：`{notes_vault}/.mindraft/scene_state.json`（`safe_write_json()` 原子写入），同步导出 `dashboard/data/scene.json`
-- 输出校验：jsonschema 结构校验 + manifest 素材 id 引用存在性校验，失败走 `_call_with_retry()` 重试一次，仍失败保留旧场景不中断流程（ADR-009）
+#### 新旧阶段映射
 
-**验收标准**
-- 首次 `run.py` 执行后生成场景（genesis=true），Dashboard 展示与笔记内容相符的场景
-- 后续运行按变化量级做增量变更，房间布局与既有物件不被整体重建
-- LLM 编造不存在的素材 id 时被校验拦截并重试，最终失败时保留旧场景、Dashboard 正常展示
-- `--dry-run` 调用 LLM 但不写入 `scene_state.json` / `scene.json`
-
-**阶段结束**：AI 输出实现汇总 + 待确认问题 → 人工审查确认
-
----
-
-### 未来阶段（Future）
-
-- 自动触发：GitHub Actions（push 后自动执行）
-- 云端部署：Vercel（前端）+ Railway（Python 后端）
-- 像素世界扩展：多房间/多角色、NPC 互动、用户可交互元素
-- 多用户支持（账号系统 + 数据隔离）
-- 移动端适配
-- 接入更多笔记源（Notion / Apple Notes）
-- 开放 API，供第三方集成
+| 原计划 | 本次处理 |
+|--------|----------|
+| Phase 4 Text Card + avatar_data + Work/Home 双卡 | Text Card 与中间画像层取消；Work/Home 移至未来目标 |
+| Phase 6 离线像素渲染 | 提前为 Phase 4A |
+| Phase 7 AI 导演与进化 | 分解为 Phase 4B（行为）和 4C（有限进化） |
+| Phase 5 关联与链接增强 | 保留 Phase 5 编号，明确 MVP 后独立排期 |
 
 ---
 
@@ -1233,5 +1112,5 @@ run.py 执行
 
 ---
 
-*产品名称：Mindraft | 文档版本：v2.0 | 最后更新：2026-06-19*  
+*产品名称：Mindraft | 文档版本：v2.1 | 最后更新：2026-09-12*
 *相关文档：[mindraft-log.md](mindraft-log.md) · [../AGENTS.md](../AGENTS.md)*

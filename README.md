@@ -6,7 +6,9 @@ Mindraft 是本地运行的个人笔记分析引擎。你在 Obsidian 或其他�
 raw_notes/*.md → 分类重写的 ai_notes/ → 增量记忆与历史归档 → 本地 Dashboard
 ```
 
-当前已完成 Phase 1–3：笔记处理、Dashboard、两区记忆压缩和跨周快照。笔记关联、URL 抓取、短笔记批处理与用户形象仍是后续规划。
+当前已完成 Phase 1–3：笔记处理、Dashboard、两区记忆压缩和跨周快照。
+
+下一步是 **Phase 4 像素世界 MVP**，依次实现离线单角色/单房间渲染（4A）、记忆驱动行为（4B）和有限增量进化（4C）。像素世界直接替代原 Text Card 用户形象方案，已有性格侧写保留；像素功能目前尚未实现。Work Me / Home Me、多房间与互动作为未来目标，笔记关联/URL 增强（Phase 5）在 MVP 后独立排期，短笔记批处理继续延后。具体边界和验收见 [实现计划](doc/Mindraft.md#pixel-world-mvp)。
 
 ## 环境要求
 

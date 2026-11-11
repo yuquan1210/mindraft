@@ -65,11 +65,7 @@ logging:
 # Token 估算方式
 token_estimation: char_ratio           # char_ratio | tiktoken
 
-# 用户画像渲染配置（改 renderer 这一行切换渲染器）
-avatar:
-  renderer: text_card       # text_card | pixel_world（Phase 4 / 6 规划）
-  work_scene: studio
-  home_scene: home
+# 像素世界配置将在 Phase 4A 接入（ADR-019）；当前尚无形象渲染开关。
 
 # Dashboard 本地服务端口
 dashboard_port: 8765

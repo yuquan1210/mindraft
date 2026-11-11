@@ -63,8 +63,8 @@ Mindraft 是双 Repo 架构——代码在 `mindraft/`，笔记在 `notes-vault/
 |------|-----------|------|
 | Phase 0 | filesystem | 读写双 Repo |
 | Phase 2 | browser | 预览 Dashboard |
-| Phase 5 | fetch | 抓取笔记中的 URL 生成摘要 |
-| Phase 6-7 | 无新增 | 像素世界素材与 Kaplay.js 均为本地文件（见 ADR-015） |
+| Phase 5（MVP 后） | fetch | 抓取笔记中的 URL 生成摘要 |
+| Phase 4A–4C | browser + 现有文件/LLM 接口 | 离线渲染 → 记忆驱动行为 → 有限进化；最小素材随仓库提供（见 ADR-019） |
 
 > 提示：VS Code Copilot Chat 自带文件读写和终端执行能力，很多场景不需要额外 MCP。MCP 主要用于 Agent 需要访问**当前 workspace 之外**的资源时。
 
@@ -179,7 +179,7 @@ Phase 0 只做基础设施和骨架，**不要**让 AI 提前做以下事情：
 安装依赖：生成 requirements.txt 后执行 `pip install -r requirements.txt`，并确保后续所有验证命令都在已激活的虚拟环境中运行。
 
 验收标准：
-1. python run.py --dry-run 执行不报错，且 notes-vault/ 下没有新增 ai_notes/、memory.json、avatar_data.json、relationships.json 等业务状态文件。
+1. python run.py --dry-run 执行不报错，且 notes-vault/ 下没有新增 ai_notes/、memory.json、scene_state.json、relationships.json 等业务状态文件。
 2. 运行临时 LLM 测试脚本能调用 API 并返回正常响应（贴出运行命令和输出片段）。
 3. 日志同时输出到控制台和 notes-vault/analysis/process_log.jsonl。
 4. 并发执行第二个 python run.py --dry-run 时，应因进程锁超时退出并返回非零状态码。

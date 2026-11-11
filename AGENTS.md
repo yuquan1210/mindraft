@@ -2,7 +2,7 @@
 
 > 本文件是 AI Agent 的项目入口，每次会话自动读取。细节文档按需查阅：
 > - `doc/Mindraft.md`（产品方案与阶段设计）
-> - `doc/mindraft-log.md`（实现日志 + ADR-001~018，架构决策的唯一权威来源）
+> - `doc/mindraft-log.md`（实现日志 + ADR-001~019，架构决策的唯一权威来源）
 > - `doc/Mindraft-Vibe-Coding-Guide.md`（人机协作流程）
 
 ## 项目定位
@@ -16,10 +16,10 @@ Mindraft 是本地运行的个人笔记分析引擎。用户用 Obsidian 在 `no
 
 ## 当前状态
 
-- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。Phase 3（记忆压缩、跨周快照、性格侧写、时间轴）✅ 完成；用户于 2026-09-12 确认 API 配置和人工测试通过。当前核心闭环已覆盖 Phase 1–3，下一阶段尚未启动，见 `doc/mindraft-log.md`。
+- **Phase 1（笔记处理核心）✅ 完成；Phase 2（Dashboard MVP）✅ 完成**。Phase 3（记忆压缩、跨周快照、性格侧写、时间轴）✅ 完成；用户于 2026-09-12 确认 API 配置和人工测试通过。当前核心闭环已覆盖 Phase 1–3，下一步为 Phase 4A–4C 像素世界 MVP，尚未启动，见 `doc/mindraft-log.md`。
 - 笔记重写已改为**按类别拆分**（ADR-017）：一篇原笔记由 LLM 一次调用拆分为 1~5 篇小笔记，分别写入 `ai_notes/{domain}/{subcategory}/`；domain 固定五域，subcategory 有 `config.yml → subcategory_vocabulary` 推荐词表（软约束）；`memory_updates`/`questions` 仍属整篇原笔记。
 - Phase 1 延后项：短笔记批量合并（`note_filter.py` 中 `group_notes_for_processing` 目前是逐篇占位）、笔记关联、URL 抓取。
-- 形象规划：原「像素画形象」已替换为「AI 导演的像素小人世界」（ADR-015），拆为 Phase 6（Kaplay.js 渲染基建，无 AI）与 Phase 7（LLM 场景生成 + 增量进化）。
+- 形象规划（ADR-019）：像素世界替代原 Phase 4 Text Card，并吸收原 Phase 6–7，分为 **4A 离线渲染 → 4B 记忆驱动行为 → 4C 有限增量进化**。MVP 仅单角色/单房间；Work Me / Home Me、多房间和互动移至未来目标。直接使用 active_memory + manifest + scene_state，不实现 avatar_data 中间层或 TextCardRenderer。已有性格侧写保留。Phase 5 笔记关联/链接增强在 MVP 后独立排期。
 - Phase 3 新增 `summary_style.yml`、`analysis_style.yml`、`memory_compression.yml`。热层五域字段是近期原文，`active_memory._condensed` 是浓缩区；`original_order` 跟踪原文顺序，`history_archive` 是历史唯一数据源。
 
 ## 目录结构

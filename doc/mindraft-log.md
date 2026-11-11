@@ -7,7 +7,7 @@
 
 ## 项目状态
 
-**当前阶段**：Phase 1–3 ✅ 完成；2026-09-12 用户确认 API 配置与人工测试通过。当前进行核心流程复核和重构，Phase 4 未启动。
+**当前阶段**：Phase 1–3 ✅ 完成；2026-09-12 用户确认 API 配置与人工测试通过。核心流程复核已完成；下一步为 Phase 4A–4C 像素世界 MVP（未开始），原 Text Card 取消，Work Me / Home Me 延后（ADR-019）。
 **实现方式**：Vibe-coding — AI 实现，人工审查 + 指挥
 **最后更新**：2026-09-12
 
@@ -55,7 +55,7 @@
 | **决策** | avatar 以 `evolve_avatar()`（增量更新）为主，genesis 模式（从头生成）仅在首次运行或明确重置时触发 |
 | **理由** | 连续性是用户认同感的来源；每次重建会丢失积累的个性细节，破坏"形象成长"的核心体验 |
 | **影响** | `avatar_data.json` 的 `avatar_identity.core_traits` 和 `visual_anchors` 作为稳定锚点不轻易变动 |
-| **状态** | ✅ 已确认 |
+| **状态** | ✅ 延续增量进化原则；原 avatar 函数/字段仅为旧设计，Phase 4 改用 scene_state（ADR-019） |
 
 ---
 
@@ -88,7 +88,7 @@
 | **决策** | `avatar_data.json` 数据契约固定不变；渲染器（TextCard / PixelWorld，ADR-015 更新）可替换，不影响数据层 |
 | **理由** | Phase 4 用 TextCardRenderer，Phase 6–7 增加 PixelWorld 渲染与 AI 导演，不需要改数据结构 |
 | **影响** | `avatar_data.json` 的字段结构在 Phase 0 就要最终确定，后续阶段只扩展、不重构 |
-| **状态** | ✅ 已确认 |
+| **状态** | ⚠️ 数据/渲染解耦原则保留；Text Card 与 avatar_data 固定契约被 ADR-019 取代，MVP 改用版本化 Scene JSON |
 
 ---
 
@@ -176,7 +176,7 @@
 | **决策** | 原 Phase 6「像素画形象」（Replicate API 生成 + seed 重绘）整体替换为「AI 导演的像素小人世界」，并拆分为两个 Phase：Phase 6 渲染基建（素材编目 + Kaplay.js 渲染器 + 剧本执行器，无 AI）、Phase 7 AI 导演与场景进化（Python 侧 LLM 场景生成 + 增量进化）。渲染器命名为 `pixel_world`，原 `pixel_art` / `animated_sprite` / `game` 渲染器规划作废（ADR-007 的数据契约与插件机制不变，仅渲染器集合调整） |
 | **理由** | 像素世界与 ADR-007 数据/渲染分离架构同构（场景剧本 JSON 即渲染输入）；形象延续性由「场景状态持久化 + 增量变更」天然保证，比图片重绘更稳；去掉外部图像 API 的不确定性与成本 |
 | **约束** | ① LLM 场景生成全部在 Python 侧（`analyze.py`），前端只读 `dashboard/data/scene.json`，不在浏览器调 LLM API（ADR-005 / ADR-012）；② 场景进化遵循 ADR-004：LLM 只输出对当前场景的增量变更，Genesis 全量生成仅限首次/重置；③ LLM 输出经 jsonschema 校验 + `assets_manifest.json` 素材 id 引用校验，失败重试一次后保留旧场景（ADR-009）；④ 场景状态存 `{notes_vault}/.mindraft/scene_state.json`，`safe_write_json()` 原子写入（ADR-008 / ADR-014）；⑤ 像素素材包不提交入库（版权问题），Kaplay.js vendor 到 `dashboard/vendor/` 保证离线可用 |
-| **状态** | ✅ 已确认 |
+| **状态** | ⚠️ 像素世界方向保留；阶段编号、依赖、素材分发策略由 ADR-019 更新。原 Phase 6–7 合并至 Phase 4A–4C |
 
 ---
 
@@ -210,6 +210,22 @@
 
 ---
 
+### ADR-019：像素世界作为唯一 MVP 形象，取消 Text Card 前置层
+
+| 项 | 内容 |
+|----|------|
+| **日期与依据** | 2026-09-12，用户明确要求像素世界替代 Phase 4 用户形象卡，并将 Work Me / Home Me 移出 MVP，作为未来目标 |
+| **MVP 边界** | 单用户、单角色、单房间的记忆驱动像素世界；保留已实现的性格侧写卡片。Work/Home 双画像、多房间、换装、NPC、用户操控和 transformation 均不在本轮 |
+| **阶段重排** | 新 Phase 4 分 4A 离线渲染、4B 记忆驱动行为、4C 有限增量进化；吸收原 Phase 6–7。Phase 5 关联/链接增强继续保留，但位于 MVP 后，不是像素世界依赖 |
+| **数据与调用** | active_memory + 精简 manifest + 当前可见 scene_state 直接作为导演输入；不生成 avatar_data.json，不实现 TextCardRenderer，不依赖尚不存在的 assess_change_magnitude/evolve_avatar。后端一次逻辑导演调用，失败重试一次；历史不进入上下文 |
+| **可实现性收敛** | 固定 16×12 网格、固定角色、最多 8 个预设槽位、最多 12 步白名单动作；代码计算路径、校验循环、分配稳定 id。4B 只改行为；4C 每次最多添一件物件，满槽仅改变行为 |
+| **状态语义** | scene_state.json 为权威来源，scene.json 是可重导出的投影；成功状态/hash/演化记录一次原子提交。异常保留旧状态，缺导出无需再调 LLM，坏状态和素材版本不兼容不自动创世 |
+| **素材与渲染** | 固定引擎版本、vendor 本地依赖；随仓库提供可分发的最小示例素材并记录来源/许可，外部素材可选。Aseprite 不是必需工具。原“全部素材不入库”的约束取消，避免新 checkout 无法复现 |
+| **未来目标** | Work Me / Home Me 是同一用户的多视角，而非本次双人格数据模型。未来开始时再决定契约与表现形式，不预建闲置字段 |
+| **状态** | 规划已更新，尚未实现；4A/4B/4C 分别通过验收后推进，4C 验收后才算像素世界 MVP 完成 |
+
+---
+
 ## 实现阶段状态
 
 | 阶段 | 状态 | 完成日期 | 核心产物 |
@@ -218,16 +234,18 @@
 | Phase 1：笔记处理核心 | ✅ 已完成 | 2026-07-26 | `process_notes.py`、`note_filter.py`、skill 系统、`memory.json` |
 | Phase 2：Dashboard MVP | ✅ 已完成 | 2026-08-05 | `analyze.py`、Dashboard HTML/JS、`serve.py` |
 | Phase 3：记忆系统完善 | ✅ 已完成人工验收 | 2026-09-12 | 记忆压缩、统一归档、MBTI 描述、Road Map |
-| Phase 4：用户形象 TextCard | ⬜ 未开始 | — | `avatar_data.json`、TextCardRenderer |
-| Phase 5：笔记关联与链接增强 | ⬜ 未开始 | — | `relationships.json`、URL 摘要、关系图 |
-| Phase 6：像素世界渲染基建（无 AI） | ⬜ 未开始 | — | 素材 manifest、Kaplay.js、`pixel_world_renderer.js`、剧本执行器（ADR-015） |
-| Phase 7：AI 导演与场景进化 | ⬜ 未开始 | — | `scene_state.json`、SCENE_DIRECTOR_ROLE、`scene_director.yml`、增量进化（ADR-015） |
+| Phase 4A：离线像素世界竖向原型 | ⬜ 未开始 | — | 单角色/房间、最小素材、manifest、Scene 契约、renderer 与示例循环 |
+| Phase 4B：记忆驱动场景行为 | ⬜ 未开始 | — | scene.py、导演 role/skill/schema、scene_state、缓存/导出/恢复 |
+| Phase 4C：有限增量进化 | ⬜ 未开始 | — | 稳定物件 id、有限新增、演化日志、端到端 MVP 验收 |
+| Phase 5：笔记关联与链接增强 | ⬜ MVP 后独立排期 | — | relationships、URL 摘要、关系图 |
+| Future：多视角形象 | ⬜ 延后 | — | Work Me / Home Me、多房间、多角色、互动等 |
+
 
 ---
 
 ## Grilling 记录（持续更新）
 
-> 每次 grilling 会议后追加记录，包括关键决策、待确认想法、延后项。
+> 每次 grilling 会议后追加记录，包括关键决策、待确认想法、延后项。以下为历史记录；其中 Text Card、avatar_data、原 Phase 6–7 编号和双画像契约已由 ADR-019 取代，不作为当前实现依赖。
 
 ### 2026-07-26 Phase 1 规划 grilling
 
@@ -344,8 +362,8 @@ notes-vault/
 │   └── life/
 └── .mindraft/          ← 分析产物（隐藏目录，JSON 文件）
     ├── memory.json
-    ├── avatar_data.json
-    └── relationships.json
+    ├── scene_state.json   ← Phase 4B/C 规划
+    └── relationships.json ← Phase 5，MVP 后
 
 mindraft/
 ├── config.yml          ← 主配置文件
@@ -370,8 +388,8 @@ mindraft/
 | 类别 | 可选值 |
 |------|--------|
 | LLM 提供者 | `kimi` \| `openai` \| `anthropic` \| `deepseek` |
-| 渲染器类型 | `text_card` \| `pixel_world`（ADR-015，`pixel_art` / `animated_sprite` / `game` 规划已作废） |
-| 变化量级 | `micro` \| `macro` \| `transformation` |
+| 渲染器类型 | `pixel_world`（Phase 4A 待实现；ADR-019 取消 Text Card） |
+| 世界更新 | 4B 行为更新 / 4C 有限物件新增；MVP 不做变化量级评估 |
 | Memory 操作 | `APPEND_TO` \| `SET_IF_NEW`（仅这两种，其余忽略） |
 | Token 估算 | `char_ratio`（默认）\| `tiktoken` |
 | 笔记处理 | `skip`（预筛选跳过）\| `single`（独立处理）\| `batch`（合并处理） |
@@ -382,13 +400,12 @@ mindraft/
 |------|------|
 | 主配置 | `mindraft/config.yml` |
 | 记忆状态 | `{notes_vault}/.mindraft/memory.json` |
-| 形象数据 | `{notes_vault}/.mindraft/avatar_data.json` |
-| 像素世界场景状态 | `{notes_vault}/.mindraft/scene_state.json`（Phase 7 规划） |
+| 像素世界场景状态 | `{notes_vault}/.mindraft/scene_state.json`（Phase 4B/C 规划） |
 | 关联图谱 | `{notes_vault}/.mindraft/relationships.json` |
 | AI 处理日志 | `mindraft/logs/process_log.jsonl` |
 | 进程锁 | `mindraft/.mindraft.lock` |
 | 前端配置 | `mindraft/dashboard/data/config.json` |
-| 像素世界场景剧本 | `mindraft/dashboard/data/scene.json`（Phase 7 规划） |
+| 像素世界场景剧本 | `mindraft/dashboard/data/scene.json`（Phase 4B/C 规划） |
 
 ---
 
@@ -396,7 +413,7 @@ mindraft/
 
 > 每阶段结束后在此记录待确认问题，确认后标记解决。
 
-（目前无待解决问题）
+Phase 4A 先验证引擎固定版本、最小素材与动作适配、默认示例可复现；这些是实施验收项，不要求先购买素材或实现 Text Card。详见产品方案 §5.6 与 §9。
 
 ---
 
@@ -404,7 +421,7 @@ mindraft/
 
 > 每阶段完成后，AI Agent 在此追加汇总，包括：完成内容、主要决策、遇到的问题、下一阶段建议。
 
-（尚未开始实现）
+（以下按日期保留实现历史；当前状态以上方阶段表与最新 ADR 为准。）
 
 ---
 
@@ -844,3 +861,14 @@ mindraft/
 - 分开说明离线回归、全量测试、真实 API 测试和单用例测试；列出 pytest 单独安装、真实测试 skip/失败条件以及 dry-run 的真实调用语义。
 - 增加数据路径、处理限制、常见问题和设计文档导航。本次仅修改文档与示例注释。
 - 验证：实际激活虚拟环境后执行 `python run.py --help` 与离线回归，45 项通过；README 本地链接、代码围栏和 diff whitespace 检查通过。
+
+
+### 2026-09-12 像素世界 MVP 计划重排
+
+- 按用户新范围取消 Text Card 和 Work/Home 双画像的 MVP 实现，既有 profile.json 性格侧写继续保留。
+- 产品方案 §5.6 改写为单场景状态契约、白名单导演输出、资源/路径校验、缓存与失败恢复；§9 改为 Phase 4A→4B→4C。删除对未实现 avatar_data/assess_change_magnitude 的依赖，避免“删掉前置阶段但仍引用其产物”。
+- 增加数值上限、输入变化与失败语义、素材最小集合、fresh checkout 离线验收、浏览器循环测试和真实记忆人工验收。完整 MVP 以 4C 通过为准，不将静态示例当作 AI 世界完成。
+- 同步 AGENTS、README、协作指南和架构图；删除 config.yml 中未被代码消费的 avatar.renderer/work_scene/home_scene 旧预留项，新 pixel_world 配置在 4A 实现时才接入。
+- 核对现有源码：尚无渲染器、scene_state、avatar_data 或变化量级函数；现有 BaseLLM、重试/校验、原子写入与 HTTP 服务可复用。查阅 KAPLAY 官方 API 确认 sprite/图集加载能力；引擎版本和素材仍需 4A 原型验证，未声称已完成渲染验证。
+- 本次仅调整计划文档和无效配置预留，不开始像素世界实现，不修改原始笔记，不执行 Git 状态变更操作。
+- 验证：45 项离线回归通过；Markdown 代码围栏、新阶段标题/锚点与 diff whitespace 检查通过。素材与引擎的浏览器实测列为 4A 门槛，本轮未实现或运行像素世界原型。
